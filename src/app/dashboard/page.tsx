@@ -4,16 +4,20 @@ import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Building2, Network, Users, FileText, FlaskConical, ShieldCheck,
   TrendingUp, AlertTriangle, CheckCircle2, Clock, ArrowRight,
-  Cpu, Database, Activity
+  Cpu, Database, Activity, Copy, FileWarning, Languages, RefreshCw,
+  ChevronRight, FileCheck
 } from 'lucide-react';
 import Link from 'next/link';
 
 interface Stats {
   faculties: number;
   departments: number;
+  promotions: number;
   users: number;
   students: number;
   teachers: number;
@@ -59,6 +63,12 @@ export default function DashboardPage() {
     { label: 'En attente', value: stats.pendingAnalyses, icon: Clock, color: 'text-rose-600 bg-rose-50', href: '/dashboard/analyses' },
   ];
 
+  // État du système
+  const systemHealthy = stats.pendingAnalyses === 0;
+  const avgScorePct = stats.avgScore !== null ? stats.avgScore * 100 : 0;
+  const avgScoreColor = avgScorePct > 30 ? 'text-rose-600' : avgScorePct > 15 ? 'text-amber-600' : 'text-emerald-600';
+  const avgScoreProgressColor = avgScorePct > 30 ? 'bg-rose-500' : avgScorePct > 15 ? 'bg-amber-500' : 'bg-emerald-500';
+
   return (
     <div className="space-y-6">
       {/* En-tête */}
@@ -91,9 +101,9 @@ export default function DashboardPage() {
           const Icon = kpi.icon;
           return (
             <Link key={kpi.label} href={kpi.href}>
-              <Card className="hover:shadow-md transition cursor-pointer border-slate-200">
+              <Card className="hover:shadow-md transition cursor-pointer border-slate-200 group">
                 <CardContent className="p-4">
-                  <div className={`h-9 w-9 rounded-lg flex items-center justify-center mb-3 ${kpi.color}`}>
+                  <div className={`h-9 w-9 rounded-lg flex items-center justify-center mb-3 ${kpi.color} group-hover:scale-110 transition`}>
                     <Icon className="h-4 w-4" />
                   </div>
                   <div className="text-2xl font-bold text-slate-900">{kpi.value}</div>
@@ -104,6 +114,43 @@ export default function DashboardPage() {
           );
         })}
       </div>
+
+      {/* État global du système */}
+      <Card className={systemHealthy ? 'border-emerald-200 bg-emerald-50/30' : 'border-amber-200 bg-amber-50/30'}>
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              {systemHealthy ? (
+                <CheckCircle2 className="h-8 w-8 text-emerald-600" />
+              ) : (
+                <AlertTriangle className="h-8 w-8 text-amber-600" />
+              )}
+              <div>
+                <div className={`font-semibold ${systemHealthy ? 'text-emerald-900' : 'text-amber-900'}`}>
+                  {systemHealthy ? 'Système opérationnel' : `${stats.pendingAnalyses} analyse(s) en attente`}
+                </div>
+                <div className="text-xs text-slate-500">
+                  {stats.completedAnalyses} analyses terminées · {stats.documents} documents · {stats.users} utilisateurs actifs
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 text-xs">
+              <div className="text-center">
+                <div className="font-bold text-slate-900">{stats.faculties}</div>
+                <div className="text-slate-500">facultés</div>
+              </div>
+              <div className="text-center">
+                <div className="font-bold text-slate-900">{stats.departments}</div>
+                <div className="text-slate-500">départements</div>
+              </div>
+              <div className="text-center">
+                <div className="font-bold text-slate-900">{stats.promotions}</div>
+                <div className="text-slate-500">promotions</div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Deux colonnes principales */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -122,18 +169,18 @@ export default function DashboardPage() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="rounded-lg border border-slate-200 p-3">
                   <div className="text-[10px] uppercase text-slate-500 mb-1">Modèle</div>
-                  <div className="text-xs font-semibold text-slate-900 truncate">Sentence-BERT</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">distiluse multilingual</div>
+                  <div className="text-xs font-semibold text-slate-900 truncate">TF-IDF</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">cosinus + Jaccard</div>
                 </div>
                 <div className="rounded-lg border border-slate-200 p-3">
                   <div className="text-[10px] uppercase text-slate-500 mb-1">Seuil</div>
-                  <div className="text-xs font-semibold text-slate-900">0.80</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">cosinus threshold</div>
+                  <div className="text-xs font-semibold text-slate-900">0.15</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">similarité min</div>
                 </div>
                 <div className="rounded-lg border border-slate-200 p-3">
-                  <div className="text-[10px] uppercase text-slate-500 mb-1">Dimensions</div>
-                  <div className="text-xs font-semibold text-slate-900">512</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">vector size</div>
+                  <div className="text-[10px] uppercase text-slate-500 mb-1">Classification</div>
+                  <div className="text-xs font-semibold text-slate-900">5 types</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">copy, paraphrase...</div>
                 </div>
                 <div className="rounded-lg border border-slate-200 p-3">
                   <div className="text-[10px] uppercase text-slate-500 mb-1">Périmètre</div>
@@ -144,7 +191,7 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between p-3 rounded-lg bg-emerald-50 border border-emerald-100">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                  <span className="text-sm font-medium text-emerald-900">Système opérationnel</span>
+                  <span className="text-sm font-medium text-emerald-900">Moteur IA opérationnel</span>
                 </div>
                 <Badge variant="outline" className="bg-white border-emerald-200 text-emerald-700">
                   {stats.completedAnalyses} analyses terminées
@@ -160,6 +207,7 @@ export default function DashboardPage() {
                 <Database className="h-4 w-4 text-blue-600" />
                 Répartition des travaux par faculté
               </CardTitle>
+              <CardDescription>Volume documentaire supervisé</CardDescription>
             </CardHeader>
             <CardContent>
               {stats.documentsByFaculty.length === 0 ? (
@@ -201,6 +249,7 @@ export default function DashboardPage() {
                 <TrendingUp className="h-4 w-4 text-amber-600" />
                 Score moyen de similarité
               </CardTitle>
+              <CardDescription>Indicateur global de plagiat détecté</CardDescription>
             </CardHeader>
             <CardContent>
               {stats.avgScore === null ? (
@@ -209,12 +258,23 @@ export default function DashboardPage() {
                   <div className="text-sm text-slate-500">Aucune analyse disponible</div>
                 </div>
               ) : (
-                <div className="text-center py-4">
-                  <div className={`text-4xl font-bold ${stats.avgScore > 0.3 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                    {(stats.avgScore * 100).toFixed(1)}%
+                <div className="space-y-3">
+                  <div className="text-center py-2">
+                    <div className={`text-4xl font-bold ${avgScoreColor}`}>
+                      {avgScorePct.toFixed(1)}%
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1">
+                      Moyenne sur {stats.completedAnalyses} analyses
+                    </div>
                   </div>
-                  <div className="text-xs text-slate-500 mt-1">
-                    Moyenne sur {stats.completedAnalyses} analyses
+                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full ${avgScoreProgressColor} rounded-full transition-all`}
+                      style={{ width: `${avgScorePct}%` }}
+                    />
+                  </div>
+                  <div className="text-xs text-slate-500 text-center">
+                    {avgScorePct > 30 ? '⚠️ Plagiat fréquent détecté' : avgScorePct > 15 ? 'Similarités modérées' : '✓ Travaux majoritairement originaux'}
                   </div>
                 </div>
               )}
@@ -224,10 +284,15 @@ export default function DashboardPage() {
           {/* Activité récente */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Activity className="h-4 w-4 text-purple-600" />
-                Activité récente
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-purple-600" />
+                  Activité récente
+                </CardTitle>
+                <Button asChild variant="ghost" size="sm">
+                  <Link href="/dashboard/audit" className="text-xs">Tout voir <ChevronRight className="h-3 w-3" /></Link>
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {stats.recentAudit.length === 0 ? (
@@ -235,26 +300,83 @@ export default function DashboardPage() {
                   Aucune activité récente.
                 </div>
               ) : (
-                <div className="space-y-3 max-h-80 overflow-y-auto">
-                  {stats.recentAudit.slice(0, 8).map((log: any) => (
-                    <div key={log.id} className="flex items-start gap-2 text-xs">
-                      <div className="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center shrink-0 mt-0.5">
-                        <ShieldCheck className="h-3 w-3 text-slate-500" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-slate-900">{log.action.replace(/_/g, ' ')}</div>
-                        <div className="text-slate-500">
-                          {log.userName || 'Système'} · {new Date(log.createdAt).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                <ScrollArea className="h-[300px] pr-2">
+                  <div className="space-y-3">
+                    {stats.recentAudit.slice(0, 12).map((log: any) => {
+                      const actionType = log.action.split('_')[0];
+                      const colorClass = actionType === 'CREATE' ? 'bg-emerald-100 text-emerald-700' :
+                                        actionType === 'UPDATE' ? 'bg-blue-100 text-blue-700' :
+                                        actionType === 'DELETE' ? 'bg-rose-100 text-rose-700' :
+                                        'bg-slate-100 text-slate-700';
+                      return (
+                        <div key={log.id} className="flex items-start gap-2 text-xs">
+                          <div className={`h-7 w-7 rounded-full ${colorClass} flex items-center justify-center shrink-0 mt-0.5`}>
+                            <ShieldCheck className="h-3 w-3" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-slate-900 truncate">
+                              {log.action.replace(/_/g, ' ').toLowerCase()}
+                            </div>
+                            <div className="text-slate-500">
+                              {log.userName || 'Système'}
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              {new Date(log.createdAt).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                      );
+                    })}
+                  </div>
+                </ScrollArea>
               )}
             </CardContent>
           </Card>
         </div>
       </div>
+
+      {/* Raccourcis supervision admin */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-purple-600" />
+            Supervision administrative
+          </CardTitle>
+          <CardDescription>Accès rapide aux modules de gestion</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Link href="/dashboard/faculties" className="group">
+              <div className="rounded-lg border border-slate-200 p-3 hover:border-emerald-300 hover:bg-emerald-50/50 transition">
+                <Building2 className="h-5 w-5 text-emerald-600 mb-2" />
+                <div className="text-sm font-medium text-slate-900">Facultés</div>
+                <div className="text-xs text-slate-500">{stats.faculties} module(s)</div>
+              </div>
+            </Link>
+            <Link href="/dashboard/users" className="group">
+              <div className="rounded-lg border border-slate-200 p-3 hover:border-purple-300 hover:bg-purple-50/50 transition">
+                <Users className="h-5 w-5 text-purple-600 mb-2" />
+                <div className="text-sm font-medium text-slate-900">Utilisateurs</div>
+                <div className="text-xs text-slate-500">{stats.users} compte(s)</div>
+              </div>
+            </Link>
+            <Link href="/dashboard/documents" className="group">
+              <div className="rounded-lg border border-slate-200 p-3 hover:border-amber-300 hover:bg-amber-50/50 transition">
+                <FileText className="h-5 w-5 text-amber-600 mb-2" />
+                <div className="text-sm font-medium text-slate-900">Documents</div>
+                <div className="text-xs text-slate-500">{stats.documents} travail(s)</div>
+              </div>
+            </Link>
+            <Link href="/dashboard/analyses" className="group">
+              <div className="rounded-lg border border-slate-200 p-3 hover:border-teal-300 hover:bg-teal-50/50 transition">
+                <FlaskConical className="h-5 w-5 text-teal-600 mb-2" />
+                <div className="text-sm font-medium text-slate-900">Analyses</div>
+                <div className="text-xs text-slate-500">{stats.completedAnalyses} terminée(s)</div>
+              </div>
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
