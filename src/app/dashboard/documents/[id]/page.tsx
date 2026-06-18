@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, FileText, User, Building2, Calendar, FlaskConical, Loader2, AlertCircle } from 'lucide-react';
+import { ArrowLeft, FileText, User, Building2, Calendar, FlaskConical, Loader2, AlertCircle, Play, CheckCircle2, XCircle } from 'lucide-react';
+import { toast } from 'sonner';
 import Link from 'next/link';
 
 export default function DocumentDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -13,10 +14,31 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
   const router = useRouter();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [analyzing, setAnalyzing] = useState(false);
 
   useEffect(() => {
     fetch(`/api/documents/${id}`).then(r => r.json()).then(d => setData(d)).finally(() => setLoading(false));
   }, [id]);
+
+  async function launchAnalysis() {
+    setAnalyzing(true);
+    try {
+      const res = await fetch(`/api/documents/${id}/analyze`, { method: 'POST' });
+      const result = await res.json();
+      if (!res.ok) {
+        toast.error(result.error || 'Erreur lors de l\'analyse');
+        return;
+      }
+      toast.success(`Analyse terminée — Score: ${((result.analysis?.globalScore || 0) * 100).toFixed(1)}%`);
+      // Recharger les données
+      const refreshed = await fetch(`/api/documents/${id}`).then(r => r.json());
+      setData(refreshed);
+    } catch (e: any) {
+      toast.error('Erreur réseau: ' + e.message);
+    } finally {
+      setAnalyzing(false);
+    }
+  }
 
   if (loading) return <div className="text-center py-12"><Loader2 className="h-8 w-8 animate-spin mx-auto text-slate-400" /></div>;
   if (!data?.document) return <div className="text-center py-12"><AlertCircle className="h-10 w-10 text-rose-300 mx-auto mb-3" /><p className="text-sm text-slate-500">Document introuvable.</p></div>;
@@ -24,6 +46,7 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
   const doc = data.document;
   const analysis = data.analysis;
   const matches = data.matches || [];
+  const canAnalyze = doc.status === 'SUBMITTED' || doc.status === 'ANALYZED';
 
   return (
     <div className="space-y-6">
@@ -33,7 +56,20 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
           <h1 className="text-2xl font-bold text-slate-900">{doc.title}</h1>
           <p className="text-sm text-slate-500 mt-1">{doc.fileName}</p>
         </div>
-        <Badge variant="outline" className="text-sm">{doc.type}</Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="text-sm">{doc.type}</Badge>
+          {canAnalyze && (
+            <Button onClick={launchAnalysis} disabled={analyzing} className="bg-purple-600 hover:bg-purple-700">
+              {analyzing ? (
+                <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" />Analyse en cours...</>
+              ) : analysis?.status === 'COMPLETED' ? (
+                <><Play className="h-4 w-4 mr-1.5" />Relancer l'analyse</>
+              ) : (
+                <><Play className="h-4 w-4 mr-1.5" />Lancer l'analyse IA</>
+              )}
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
