@@ -49,6 +49,7 @@ const NAV_SECTIONS = [
     items: [
       { href: '/dashboard/documents', label: 'Travaux & mémoires', icon: FileText, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN', 'TEACHER', 'STUDENT'] },
       { href: '/dashboard/analyses', label: 'Analyses IA', icon: FlaskConical, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN', 'TEACHER'] },
+      { href: '/dashboard/federation', label: 'Fédération inter-univ.', icon: Globe, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN'] },
     ],
   },
   {
