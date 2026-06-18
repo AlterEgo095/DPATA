@@ -36,7 +36,6 @@ yarn-error.log*
 # vercel
 .vercel
 
-
 # typescript
 *.tsbuildinfo
 next-env.d.ts
@@ -50,5 +49,30 @@ test
 prompt
 
 server.log
-# Skills directory
+
+# Skills directory (private tooling)
 /skills/
+
+# Local data (JSON store + uploaded documents)
+/data/
+/public/uploads/
+/db/
+/custom.db
+*.db
+
+# Z.ai sandbox scripts
+/.zscripts/
+
+# Tool result caches
+/tool-results/
+
+# Original draft documents (kept locally only)
+/upload/
+/download/
+
+# Examples (not part of the actual project)
+/examples/
+/mini-services/
+
+# Caddy config (deployment-specific)
+/Caddyfile
