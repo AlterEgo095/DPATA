@@ -1,0 +1,49 @@
+# Docker Compose pour la plateforme PlagiatIA en production
+# Comprend : PostgreSQL 16 + extension pgvector + application Next.js
+
+version: '3.8'
+
+services:
+  # ============================================================
+  # Base de données PostgreSQL avec pgvector
+  # ============================================================
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: plagiatia-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: plagiatia
+      POSTGRES_USER: plagiatia
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-plagiatia_dev_2025}
+      POSTGRES_HOST_AUTH_METHOD: md5
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-pgvector.sql:/docker-entrypoint-initdb.d/init-pgvector.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U plagiatia"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================
+  # Application Next.js (à activer après build Docker)
+  # ============================================================
+  # app:
+  #   build: .
+  #   container_name: plagiatia-app
+  #   restart: unless-stopped
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     DATABASE_URL: postgresql://plagiatia:plagiatia_dev_2025@postgres:5432/plagiatia?schema=public
+  #     JWT_SECRET: ${JWT_SECRET:-change-me-in-production-min-32-chars}
+  #     NODE_ENV: production
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+
+volumes:
+  postgres_data:
+    driver: local
