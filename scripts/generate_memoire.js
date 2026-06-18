@@ -187,7 +187,7 @@ function buildCover() {
     ["Département", "Mathématiques et Informatique"],
     ["Encadré par", "【Professeur encadreur】"],
     ["Cas pilote", "Faculté des Sciences — UNIKIN"],
-    ["Année académique", "【2024 - 2025】"],
+    ["Année académique", "2025 - 2026"],
   ];
   const infoTable = new Table({
     width: { size: 70, type: WidthType.PERCENTAGE },
@@ -243,7 +243,7 @@ function buildCover() {
       children: [new TextRun({ text: "Cas pilote : Faculté des Sciences de l'Université de Kinshasa", size: 24, italics: true, color: P.secondary, font: FONT_BODY })] }),
     infoTable,
     new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 1000, line: 320 },
-      children: [new TextRun({ text: "Kinshasa, 【Année académique】", size: 26, color: P.body, font: FONT_BODY })] }),
+      children: [new TextRun({ text: "Kinshasa, 2025 - 2026", size: 26, color: P.body, font: FONT_BODY })] }),
   ];
 }
 
