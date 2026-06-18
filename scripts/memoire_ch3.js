@@ -168,7 +168,7 @@ function buildChapter3(h) {
 
     H2("III.14. Conclusion"),
     P_body("Ce chapitre a présenté la conception détaillée de la plateforme web intelligente. L'architecture multi-tiers, la modularité fonctionnelle, le pipeline IA en huit étapes, la base relationnelle PostgreSQL étendue par pgvector, et l'API REST constituent les piliers techniques de la solution. La modélisation UML et les diagrammes d'architecture logicielle fournissent une représentation rigoureuse du système, à la fois pour la communication avec les parties prenantes et pour l'orientation des développements."),
-    P_body("Le chapitre suivant sera consacré à l'implémentation concrète de cette conception, à l'expérimentation de la plateforme sur un corpus pilote de travaux académiques de la Faculté des Sciences, et à l'évaluation quantitative de ses performances. Il présentera la stack technique effectivement mise en œuvre, les extraits de code clés du pipeline, les captures d'écran de l'interface, et l'analyse des résultats d'évaluation."),
+    P_body("Le chapitre suivant sera consacré à l'implémentation concrète de cette conception, à l'expérimentation de la plateforme sur un corpus pilote de travaux académiques de la Faculté des Sciences, et à l'évaluation quantitative de ses performances. Il présentera la stack technique effectivement mise en œuvre, les extraits de code clés du pipeline (modèles de données, endpoints API, fonctions de scoring), et l'analyse des résultats d'évaluation."),
     new Paragraph({ children: [new PageBreak()] }),
   ];
 }
