@@ -6,7 +6,7 @@ import Link from 'next/link';
 import {
   LayoutDashboard, Building2, Network, Users, FileText, FlaskConical,
   ScrollText, Settings, LogOut, Loader2, ShieldCheck, ChevronRight,
-  GraduationCap, UserCog, BookOpen, Library
+  GraduationCap, UserCog, BookOpen, Library, Globe
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
