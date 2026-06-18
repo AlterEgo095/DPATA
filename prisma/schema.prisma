@@ -1,0 +1,265 @@
+// Prisma schema — Plateforme anti-plagiat IA
+// Université de Kinshasa / Faculté des Sciences
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ORGANISATION ACADÉMIQUE (architecture multicouche)
+// ============================================================
+
+model Faculty {
+  id          String        @id @default(cuid())
+  code        String        @unique
+  name        String
+  description String?
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  departments Department[]
+  users       User[]
+  documents   Document[]
+}
+
+model Department {
+  id          String      @id @default(cuid())
+  code        String      @unique
+  name        String
+  description String?
+  isActive    Boolean     @default(true)
+  facultyId   String
+  faculty     Faculty     @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  promotions  Promotion[]
+  users       User[]
+  documents   Document[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Promotion {
+  id            String      @id @default(cuid())
+  code          String      @unique
+  name          String // ex: "L2 Informatique", "G1 Math"
+  level         String // L1, L2, L3, G1, G2, G3, Master, etc.
+  academicYear  String // ex: "2025-2026"
+  isActive      Boolean     @default(true)
+  departmentId  String
+  department    Department  @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  students      User[]
+  documents     Document[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+// ============================================================
+// UTILISATEURS & AUTHENTIFICATION
+// ============================================================
+
+enum UserRole {
+  SUPER_ADMIN
+  FACULTY_ADMIN
+  TEACHER
+  STUDENT
+}
+
+model User {
+  id              String      @id @default(cuid())
+  email           String      @unique
+  passwordHash    String
+  firstName       String
+  lastName        String
+  matricule       String?     @unique // matricule étudiant
+  role            UserRole    @default(STUDENT)
+  isActive        Boolean     @default(true)
+  facultyId       String?
+  faculty         Faculty?    @relation(fields: [facultyId], references: [id])
+  departmentId    String?
+  department      Department? @relation(fields: [departmentId], references: [id])
+  promotionId     String?
+  promotion       Promotion?  @relation(fields: [promotionId], references: [id])
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  // Relations
+  uploadedDocs    Document[]  @relation("UploadedBy")
+  supervisedDocs  Document[]  @relation("SupervisedBy")
+  analyses        Analysis[]
+  auditLogs       AuditLog[]
+  refreshTokens   RefreshToken[]
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+}
+
+// ============================================================
+// DOCUMENTS & ANALYSES
+// ============================================================
+
+enum DocumentType {
+  TFC
+  MEMOIRE
+  THESE
+  ARTICLE
+  AUTRE
+}
+
+enum DocumentStatus {
+  DRAFT
+  SUBMITTED
+  ANALYZING
+  ANALYZED
+  REJECTED
+  VALIDATED
+}
+
+model Document {
+  id              String         @id @default(cuid())
+  title           String
+  type            DocumentType   @default(TFC)
+  subject         String?
+  abstract        String?
+  filePath        String         // chemin du fichier stocké
+  fileName        String
+  fileSize        Int
+  mimeType        String
+  textExtract     String?        // texte extrait après OCR/NLP
+  status          DocumentStatus @default(DRAFT)
+  // Relations académiques
+  facultyId       String
+  faculty         Faculty        @relation(fields: [facultyId], references: [id])
+  departmentId    String
+  department      Department     @relation(fields: [departmentId], references: [id])
+  promotionId     String?
+  promotion       Promotion?     @relation(fields: [promotionId], references: [id])
+  academicYear    String
+  // Relations utilisateurs
+  uploadedById    String
+  uploadedBy      User           @relation("UploadedBy", fields: [uploadedById], references: [id])
+  supervisedById  String?
+  supervisedBy    User?          @relation("SupervisedBy", fields: [supervisedById], references: [id])
+  // Métadonnées
+  keywords        String?        // JSON array
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  // Analyses
+  analyses        Analysis[]
+  embeddings      Embedding[]
+}
+
+enum AnalysisStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model Analysis {
+  id            String          @id @default(cuid())
+  documentId    String
+  document      Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  triggeredById String
+  triggeredBy   User            @relation(fields: [triggeredById], references: [id])
+  status        AnalysisStatus  @default(PENDING)
+  // Résultats
+  globalScore   Float?          // 0.0 à 1.0
+  matchedSegments Int?          // nombre de segments similaires
+  totalSegments   Int?
+  // Config
+  threshold     Float           @default(0.80)
+  scope         String          @default("faculty") // faculty, department, all
+  // Méta
+  startedAt     DateTime?
+  completedAt   DateTime?
+  error         String?
+  createdAt     DateTime        @default(now())
+  // Détails
+  matches       Match[]
+  report        Report?
+}
+
+enum MatchType {
+  COPY_PASTE
+  PARAPHRASE
+  REFORMULATION
+  TRANSLATION
+  WEAK_MATCH
+}
+
+model Match {
+  id            String      @id @default(cuid())
+  analysisId    String
+  analysis      Analysis    @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  // Segment source (dans le document analysé)
+  querySegmentIndex  Int
+  querySegmentText   String
+  // Segment correspondant (dans un autre document)
+  sourceDocumentId   String
+  sourceSegmentIndex Int
+  sourceSegmentText  String
+  // Scores
+  semanticScore Float // 0.0 à 1.0 (cosinus)
+  lexicalScore  Float // 0.0 à 1.0 (Jaccard)
+  matchType     MatchType
+  createdAt     DateTime    @default(now())
+}
+
+model Embedding {
+  id            String   @id @default(cuid())
+  documentId    String
+  document      Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  segmentIndex  Int
+  segmentText   String
+  // Pour SQLite on stocke le vecteur en JSON string
+  vector        String   // JSON array of 512 floats
+  model         String   @default("distiluse-base-multilingual-cased-v1")
+  createdAt     DateTime @default(now())
+
+  @@index([documentId])
+}
+
+model Report {
+  id           String   @id @default(cuid())
+  analysisId   String   @unique
+  analysis     Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  content      String   // JSON détaillé du rapport
+  pdfPath      String?
+  createdAt    DateTime @default(now())
+}
+
+// ============================================================
+// CONFIGURATION & AUDIT
+// ============================================================
+
+model Setting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String   // CREATE_FACULTY, DELETE_USER, etc.
+  entity    String   // Faculty, User, Document, etc.
+  entityId  String?
+  details   String?  // JSON
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([entity, entityId])
+}
