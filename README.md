@@ -286,23 +286,25 @@ Le **Chapitre IV** (implémentation, expérimentation et évaluation) sera inté
 - [x] Diagramme d'architecture professionnel
 - [x] Mémoire académique (3 chapitres + conclusion intermédiaire)
 
-### 🚧 Phase 2 — Implémentation (en cours)
+### ✅ Phase 2 — Implémentation (achevée)
 - [x] Authentification JWT + cookies httpOnly
-- [x] Layout admin avec sidebar RBAC
+- [x] Layout admin avec sidebar RBAC (4 rôles)
 - [x] Page de connexion avec branding UNIKIN
-- [x] Tableau de bord avec KPIs
+- [x] Tableau de bord avec KPIs + état système + activité récente
 - [x] Back-office facultés (CRUD complet)
-- [ ] Back-office départements
-- [ ] Back-office promotions
-- [ ] Back-office utilisateurs (étudiants, enseignants, admins)
-- [ ] Workflow étudiant : dépôt de travaux
-- [ ] Workflow enseignant : consultation et validation
-- [ ] Moteur IA : extraction OCR (Tesseract)
-- [ ] Moteur IA : prétraitement NLP (spaCy)
-- [ ] Moteur IA : embeddings Sentence-BERT
-- [ ] Moteur IA : recherche vectorielle (pgvector)
-- [ ] Génération automatique de rapports PDF
-- [ ] Tableau de bord statistiques avancé
+- [x] Back-office départements (CRUD complet)
+- [x] Back-office promotions (CRUD complet)
+- [x] Back-office utilisateurs (étudiants, enseignants, admins)
+- [x] Workflow étudiant : dépôt de travaux académiques
+- [x] Workflow enseignant : consultation et validation
+- [x] Moteur IA : implémentation TypeScript native (TF-IDF + similarité cosinus)
+- [x] Moteur IA : classification des matches (5 types)
+- [x] Moteur IA : prétraitement NLP (tokenisation, stop words FR+EN)
+- [x] Génération automatique de rapports PDF (HTML imprimable)
+- [x] Tableau de bord statistiques avancé (supervision admin)
+- [x] Journal d'audit complet (200 entrées)
+- [x] Page paramètres système
+- [x] 9 captures d'écran pour le Chapitre IV
 
 ### 🔜 Phase 3 — Expérimentation (à venir)
 - [ ] Constitution du corpus pilote (150 travaux réels)
