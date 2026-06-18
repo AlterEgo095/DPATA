@@ -185,7 +185,7 @@ function buildCover() {
     ["Présenté par", "Moïse KASOMBO"],
     ["Travail de Fin d'Études", "Mémoire de Licence"],
     ["Département", "Mathématiques et Informatique"],
-    ["Encadré par", "【Professeur encadreur】"],
+    ["Encadré par", "Prof. KASORO MULENDA Nathanaël"],
     ["Cas pilote", "Faculté des Sciences — UNIKIN"],
     ["Année académique", "2025 - 2026"],
   ];
@@ -278,6 +278,7 @@ function buildPageFooter() {
 // =========================================================================
 const content = require("./memoire_content.js");
 const { buildChapter4 } = require("./memoire_ch4_final.js");
+const { buildFrontMatter } = require("./memoire_frontmatter.js");
 
 // =========================================================================
 // ASSEMBLAGE DOCUMENT
@@ -358,6 +359,7 @@ const doc = new Document({
       headers: { default: buildHeader() },
       footers: { default: buildPageFooter() },
       children: [
+        ...buildFrontMatter({ H1, H2, H3, P_body, P_quote, P_bullet, P_caption, P_centered, P_empty, threeLineTable }),
         ...content.buildIntroduction({ H1, H2, H3, P_body, P_quote, P_bullet, P_caption, P_centered, P_empty, threeLineTable }),
         ...content.buildChapter1({ H1, H2, H3, P_body, P_quote, P_bullet, P_caption, P_centered, P_empty, threeLineTable }),
         ...content.buildChapter2({ H1, H2, H3, P_body, P_quote, P_bullet, P_caption, P_centered, P_empty, threeLineTable }),
