@@ -277,6 +277,7 @@ function buildPageFooter() {
 // CONTENU - exporté depuis content modules
 // =========================================================================
 const content = require("./memoire_content.js");
+const { buildChapter4 } = require("./memoire_ch4_final.js");
 
 // =========================================================================
 // ASSEMBLAGE DOCUMENT
@@ -361,6 +362,7 @@ const doc = new Document({
         ...content.buildChapter1({ H1, H2, H3, P_body, P_quote, P_bullet, P_caption, P_centered, P_empty, threeLineTable }),
         ...content.buildChapter2({ H1, H2, H3, P_body, P_quote, P_bullet, P_caption, P_centered, P_empty, threeLineTable }),
         ...content.buildChapter3({ H1, H2, H3, P_body, P_quote, P_bullet, P_caption, P_centered, P_image, P_empty, threeLineTable }),
+        ...buildChapter4({ H1, H2, H3, P_body, P_quote, P_bullet, P_caption, P_centered, P_image, P_empty, threeLineTable }),
         ...content.buildConclusion({ H1, H2, H3, P_body, P_quote, P_bullet, P_caption, P_centered, P_empty, threeLineTable }),
         ...content.buildBibliographie({ H1, H2, H3, P_body, P_quote, P_bullet, P_caption, P_centered, P_empty, threeLineTable }),
       ],
