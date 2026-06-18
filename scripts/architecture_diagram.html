@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Architecture multicouche universitaire</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    background: #FFFFFF;
+    padding: 40px;
+    color: #243447;
+  }
+  #mindmap {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    min-width: 1200px;
+    padding: 24px 32px;
+  }
+
+  /* Titre du diagramme */
+  .diagram-title {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+  .diagram-title h1 {
+    font-size: 22px;
+    font-weight: 700;
+    color: #1F2937;
+    letter-spacing: 0.3px;
+  }
+  .diagram-title .subtitle {
+    font-size: 13px;
+    color: #64748B;
+    margin-top: 6px;
+    font-style: italic;
+  }
+
+  /* Layer label (à gauche de chaque couche) */
+  .layer-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    margin: 18px 0;
+    position: relative;
+  }
+  .layer-tag {
+    position: absolute;
+    left: 8px;
+    background: #F1F5F9;
+    border-left: 3px solid #4C6EF5;
+    color: #475569;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    padding: 6px 10px;
+    border-radius: 0 4px 4px 0;
+    min-width: 95px;
+  }
+
+  /* Université (top) */
+  .node-university {
+    background: #1E293B;
+    color: #FFFFFF;
+    padding: 18px 64px;
+    border-radius: 8px;
+    text-align: center;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.18);
+    min-width: 360px;
+  }
+  .node-university .label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    opacity: 0.7;
+    margin-bottom: 4px;
+  }
+  .node-university .name {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+  }
+
+  /* Plateforme Centrale IA */
+  .node-platform {
+    background: #FFFFFF;
+    border: 2.5px solid #4C6EF5;
+    border-radius: 10px;
+    padding: 16px 28px;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(76, 110, 245, 0.12);
+    min-width: 560px;
+    max-width: 640px;
+  }
+  .node-platform .label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+    color: #4C6EF5;
+    margin-bottom: 4px;
+  }
+  .node-platform .name {
+    font-size: 17px;
+    font-weight: 700;
+    color: #1E293B;
+    margin-bottom: 10px;
+  }
+  .node-platform .services {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .service-pill {
+    background: #EFF6FF;
+    color: #1E40AF;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 12px;
+    border: 1px solid #DBEAFE;
+  }
+
+  /* Facultés row */
+  .faculties-row {
+    display: flex;
+    gap: 28px;
+    justify-content: center;
+  }
+  .node-faculty {
+    background: #F8FAFC;
+    border: 2px solid #94A3B8;
+    border-radius: 8px;
+    padding: 12px 28px;
+    text-align: center;
+    min-width: 180px;
+  }
+  .node-faculty .label {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.1px;
+    color: #64748B;
+    margin-bottom: 3px;
+  }
+  .node-faculty .name {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1E293B;
+  }
+  .node-faculty.pilot {
+    border-color: #4C6EF5;
+    background: #EFF6FF;
+  }
+  .node-faculty.pilot .name {
+    color: #1E40AF;
+  }
+  .pilot-badge {
+    display: inline-block;
+    background: #4C6EF5;
+    color: white;
+    font-size: 8px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-top: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+  }
+
+  /* Départements row */
+  .departments-row {
+    display: flex;
+    gap: 28px;
+    justify-content: center;
+  }
+  .node-department {
+    background: #FFFFFF;
+    border: 1.5px solid #CBD5E1;
+    border-radius: 6px;
+    padding: 8px 16px;
+    text-align: center;
+    min-width: 180px;
+  }
+  .node-department .label {
+    font-size: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #94A3B8;
+    margin-bottom: 2px;
+  }
+  .node-department .name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #475569;
+  }
+
+  /* Étudiants (consolidé) */
+  .node-students {
+    background: #F8FAFC;
+    border: 2px solid #94A3B8;
+    border-radius: 8px;
+    padding: 12px 36px;
+    text-align: center;
+  }
+  .node-students .label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: #64748B;
+    margin-bottom: 3px;
+  }
+  .node-students .name {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1E293B;
+  }
+
+  /* Soumission */
+  .node-submission {
+    background: #1E40AF;
+    color: #FFFFFF;
+    padding: 12px 36px;
+    border-radius: 8px;
+    text-align: center;
+    box-shadow: 0 2px 6px rgba(30, 64, 175, 0.2);
+  }
+  .node-submission .label {
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    opacity: 0.8;
+    margin-bottom: 2px;
+  }
+  .node-submission .name {
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  /* Moteur IA (avec sous-composants) */
+  .node-engine {
+    background: #FFFFFF;
+    border: 2.5px solid #0D9488;
+    border-radius: 10px;
+    padding: 16px 24px;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(13, 148, 136, 0.15);
+    min-width: 580px;
+  }
+  .node-engine .label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+    color: #0D9488;
+    margin-bottom: 4px;
+  }
+  .node-engine .name {
+    font-size: 17px;
+    font-weight: 700;
+    color: #1E293B;
+    margin-bottom: 10px;
+  }
+  .engine-components {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .engine-comp {
+    background: #F0FDFA;
+    color: #0F766E;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 10px;
+    border: 1px solid #CCFBF1;
+  }
+
+  /* Rapport IA */
+  .node-report {
+    background: #FFFFFF;
+    border: 2px solid #6366F1;
+    border-radius: 8px;
+    padding: 12px 36px;
+    text-align: center;
+  }
+  .node-report .label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: #6366F1;
+    margin-bottom: 3px;
+  }
+  .node-report .name {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1E293B;
+  }
+
+  /* Jury */
+  .node-jury {
+    background: #1E293B;
+    color: #FFFFFF;
+    padding: 14px 48px;
+    border-radius: 8px;
+    text-align: center;
+    box-shadow: 0 4px 10px rgba(15, 23, 42, 0.15);
+  }
+  .node-jury .label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    opacity: 0.7;
+    margin-bottom: 3px;
+  }
+  .node-jury .name {
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  /* Connecteurs SVG */
+  svg.connectors {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* Note de bas de diagramme */
+  .diagram-footer {
+    margin-top: 24px;
+    text-align: center;
+    font-size: 11px;
+    color: #94A3B8;
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+<div id="mindmap">
+  <div class="diagram-title">
+    <h1>Figure III.1 — Architecture multicouche universitaire de la plateforme</h1>
+    <div class="subtitle">Vision hiérarchique : de l'Université au Jury, en passant par le moteur IA central</div>
+  </div>
+
+  <!-- 1. Université -->
+  <div class="layer-wrapper">
+    <div class="layer-tag">Couche 1 · Stratégique</div>
+    <div class="node-university">
+      <div class="label">Université</div>
+      <div class="name">UNIKIN — Université de Kinshasa</div>
+    </div>
+  </div>
+
+  <!-- 2. Plateforme Centrale IA -->
+  <div class="layer-wrapper">
+    <div class="layer-tag">Couche 2 · Fédérateur</div>
+    <div class="node-platform">
+      <div class="label">Plateforme Centrale IA</div>
+      <div class="name">Écosystème universitaire intelligent</div>
+      <div class="services">
+        <span class="service-pill">Gestion utilisateurs</span>
+        <span class="service-pill">Base documentaire</span>
+        <span class="service-pill">Moteur IA anti-plagiat</span>
+        <span class="service-pill">API &amp; Tableaux de bord</span>
+        <span class="service-pill">Archivage</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Facultés -->
+  <div class="layer-wrapper">
+    <div class="layer-tag">Couche 3 · Modules</div>
+    <div class="faculties-row">
+      <div class="node-faculty pilot">
+        <div class="label">Faculté A · Pilote</div>
+        <div class="name">Sciences</div>
+        <div class="pilot-badge">Cas pilote</div>
+      </div>
+      <div class="node-faculty">
+        <div class="label">Faculté B</div>
+        <div class="name">Droit</div>
+      </div>
+      <div class="node-faculty">
+        <div class="label">Faculté C</div>
+        <div class="name">Médecine</div>
+      </div>
+      <div class="node-faculty">
+        <div class="label">Faculté D</div>
+        <div class="name">...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Départements -->
+  <div class="layer-wrapper">
+    <div class="layer-tag">Couche 4 · Sous-modules</div>
+    <div class="departments-row">
+      <div class="node-department">
+        <div class="label">Département</div>
+        <div class="name">Math. &amp; Informatique</div>
+      </div>
+      <div class="node-department">
+        <div class="label">Département</div>
+        <div class="name">Droit privé</div>
+      </div>
+      <div class="node-department">
+        <div class="label">Département</div>
+        <div class="name">Chirurgie</div>
+      </div>
+      <div class="node-department">
+        <div class="label">Département</div>
+        <div class="name">…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Étudiants -->
+  <div class="layer-wrapper">
+    <div class="layer-tag">Couche 5 · Utilisateurs</div>
+    <div class="node-students">
+      <div class="label">Étudiants</div>
+      <div class="name">Dépôt de mémoires &amp; TFC</div>
+    </div>
+  </div>
+
+  <!-- 6. Soumission -->
+  <div class="layer-wrapper">
+    <div class="layer-tag">Étape</div>
+    <div class="node-submission">
+      <div class="label">Action</div>
+      <div class="name">Soumission des travaux académiques</div>
+    </div>
+  </div>
+
+  <!-- 7. Moteur IA -->
+  <div class="layer-wrapper">
+    <div class="layer-tag">Service IA</div>
+    <div class="node-engine">
+      <div class="label">Moteur IA de détection</div>
+      <div class="name">Pipeline d'analyse automatique</div>
+      <div class="engine-components">
+        <span class="engine-comp">OCR · Tesseract</span>
+        <span class="engine-comp">Prétraitement NLP</span>
+        <span class="engine-comp">Embeddings SBERT</span>
+        <span class="engine-comp">Recherche vectorielle pgvector</span>
+        <span class="engine-comp">Similarité cosinus</span>
+        <span class="engine-comp">Classification</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 8. Rapport IA -->
+  <div class="layer-wrapper">
+    <div class="layer-tag">Sortie</div>
+    <div class="node-report">
+      <div class="label">Rapport IA</div>
+      <div class="name">Score, correspondances, visualisation</div>
+    </div>
+  </div>
+
+  <!-- 9. Jury -->
+  <div class="layer-wrapper">
+    <div class="layer-tag">Couche 6 · Décision</div>
+    <div class="node-jury">
+      <div class="label">Évaluation</div>
+      <div class="name">Jury &amp; Enseignants</div>
+    </div>
+  </div>
+
+  <div class="diagram-footer">
+    Architecture modulaire et extensible — chaque faculté est un module indépendant connecté à la plateforme centrale.
+  </div>
+</div>
+
+<script>
+function drawAllLines() {
+  const map = document.getElementById('mindmap');
+  if (!map) return;
+  const cRect = map.getBoundingClientRect();
+
+  const old = map.querySelector('svg.connectors');
+  if (old) old.remove();
+
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.classList.add('connectors');
+  svg.setAttribute('width', cRect.width);
+  svg.setAttribute('height', cRect.height);
+  svg.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:1;';
+
+  function rel(el) {
+    const r = el.getBoundingClientRect();
+    return {
+      cx: r.left - cRect.left + r.width / 2,
+      cy: r.top - cRect.top + r.height / 2,
+      top: r.top - cRect.top,
+      bottom: r.bottom - cRect.top,
+      left: r.left - cRect.left,
+      right: r.right - cRect.left,
+    };
+  }
+
+  function drawLine(x1, y1, x2, y2, color, width) {
+    const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    l.setAttribute('x1', Math.round(x1));
+    l.setAttribute('y1', Math.round(y1));
+    l.setAttribute('x2', Math.round(x2));
+    l.setAttribute('y2', Math.round(y2));
+    l.setAttribute('stroke', color);
+    l.setAttribute('stroke-width', width);
+    l.setAttribute('stroke-linecap', 'round');
+    svg.appendChild(l);
+  }
+
+  function drawArrow(x1, y1, x2, y2, color, width) {
+    // Ligne principale
+    drawLine(x1, y1, x2, y2, color, width);
+    // Tête de flèche (triangle)
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    const arrowLen = 8;
+    const arrowAngle = Math.PI / 6;
+    const x3 = x2 - arrowLen * Math.cos(angle - arrowAngle);
+    const y3 = y2 - arrowLen * Math.sin(angle - arrowAngle);
+    const x4 = x2 - arrowLen * Math.cos(angle + arrowAngle);
+    const y4 = y2 - arrowLen * Math.sin(angle + arrowAngle);
+    const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    poly.setAttribute('points', `${x2},${y2} ${x3},${y3} ${x4},${y4}`);
+    poly.setAttribute('fill', color);
+    svg.appendChild(poly);
+  }
+
+  // Récupérer les nœuds principaux (premier enfant .node-* de chaque .layer-wrapper)
+  const wrappers = map.querySelectorAll('.layer-wrapper');
+  const nodes = [];
+  wrappers.forEach(w => {
+    const node = w.querySelector('.node-university, .node-platform, .faculties-row, .departments-row, .node-students, .node-submission, .node-engine, .node-report, .node-jury');
+    if (node) nodes.push(node);
+  });
+
+  // Connecteurs verticaux entre couches successives (avec flèches)
+  const layerColors = [
+    '#1E293B', // université → plateforme
+    '#4C6EF5', // plateforme → facultés
+    '#94A3B8', // facultés → départements
+    '#94A3B8', // départements → étudiants
+    '#1E40AF', // étudiants → soumission
+    '#0D9488', // soumission → moteur IA
+    '#6366F1', // moteur IA → rapport
+    '#1E293B', // rapport → jury
+  ];
+
+  for (let i = 0; i < nodes.length - 1; i++) {
+    const parent = nodes[i];
+    const child = nodes[i + 1];
+    const p = rel(parent);
+    const c = rel(child);
+    const x1 = p.cx;
+    const y1 = p.bottom;
+    const x2 = c.cx;
+    const y2 = c.top;
+    drawArrow(x1, y1, x2, y2, layerColors[i] || '#64748B', 2);
+  }
+
+  // Connecteurs internes : Plateforme → chaque Faculté
+  const platform = map.querySelector('.node-platform');
+  const faculties = map.querySelectorAll('.node-faculty');
+  if (platform && faculties.length) {
+    const p = rel(platform);
+    faculties.forEach(f => {
+      const fr = rel(f);
+      // Ligne : du bas du platform au top de la faculté
+      // Mais on dessine déjà une flèche centrale vers la ligne des facultés,
+      // donc ici on ajoute juste des connecteurs horizontaux si on veut.
+      // Pour simplifier, on ne dessine pas de connectors supplémentaires :
+      // la flèche centrale pointe déjà vers le groupe.
+    });
+  }
+
+  map.appendChild(svg);
+}
+
+window.drawAllLines = drawAllLines;
+</script>
+</body>
+</html>

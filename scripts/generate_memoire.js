@@ -9,6 +9,7 @@ const {
   SectionType, PageBreak, Table, TableRow, TableCell,
   WidthType, BorderStyle, ShadingType, TabStopType,
   TableOfContents, StyleLevel, LevelFormat, Break,
+  ImageRun,
 } = require("docx");
 const fs = require("fs");
 const path = require("path");
@@ -99,6 +100,29 @@ function P_centered(text, bold = false, size = 24) {
     alignment: AlignmentType.CENTER,
     spacing: { line: 360, after: 120 },
     children: [new TextRun({ text, bold, size, color: P.body, font: bold ? FONT_HEAD : FONT_BODY })],
+  });
+}
+function P_image(imagePath, widthPx = 580) {
+  // Insère une image centrée, en préservant les proportions
+  const buf = fs.readFileSync(imagePath);
+  // Lire les dimensions réelles via une méthode simple (en-tête PNG)
+  // PNG : largeur en octets 16-19, hauteur en octets 20-23 (big-endian)
+  let realW = 0, realH = 0;
+  if (buf[0] === 0x89 && buf[1] === 0x50) { // signature PNG
+    realW = buf.readUInt32BE(16);
+    realH = buf.readUInt32BE(20);
+  } else { realW = 2680; realH = 2296; } // fallback
+  const ratio = realH / realW;
+  const w = widthPx;
+  const h = Math.round(w * ratio);
+  return new Paragraph({
+    alignment: AlignmentType.CENTER,
+    spacing: { before: 200, after: 120 },
+    children: [new ImageRun({
+      data: buf,
+      transformation: { width: w, height: h },
+      type: "png",
+    })],
   });
 }
 function P_empty() {
@@ -336,7 +360,7 @@ const doc = new Document({
         ...content.buildIntroduction({ H1, H2, H3, P_body, P_quote, P_bullet, P_caption, P_centered, P_empty, threeLineTable }),
         ...content.buildChapter1({ H1, H2, H3, P_body, P_quote, P_bullet, P_caption, P_centered, P_empty, threeLineTable }),
         ...content.buildChapter2({ H1, H2, H3, P_body, P_quote, P_bullet, P_caption, P_centered, P_empty, threeLineTable }),
-        ...content.buildChapter3({ H1, H2, H3, P_body, P_quote, P_bullet, P_caption, P_centered, P_empty, threeLineTable }),
+        ...content.buildChapter3({ H1, H2, H3, P_body, P_quote, P_bullet, P_caption, P_centered, P_image, P_empty, threeLineTable }),
         ...content.buildChapter4({ H1, H2, H3, P_body, P_quote, P_bullet, P_caption, P_centered, P_empty, threeLineTable }),
         ...content.buildConclusion({ H1, H2, H3, P_body, P_quote, P_bullet, P_caption, P_centered, P_empty, threeLineTable }),
         ...content.buildBibliographie({ H1, H2, H3, P_body, P_quote, P_bullet, P_caption, P_centered, P_empty, threeLineTable }),
