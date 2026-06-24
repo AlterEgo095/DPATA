@@ -186,7 +186,7 @@ function buildCover() {
     ["Travail de Fin d'Études", "Mémoire de Licence"],
     ["Département", "Mathématiques et Informatique"],
     ["Encadré par", "Prof. KASORO MULENDA Nathanaël"],
-    ["Cas pilote", "Faculté des Sciences et Technologies — UNIKIN"],
+    ["Cadre", "Faculté des Sciences et Technologies — UNIKIN"],
     ["Année académique", "2025 - 2026"],
   ];
   const infoTable = new Table({
@@ -224,7 +224,7 @@ function buildCover() {
     new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200, line: 400, lineRule: "atLeast" },
       children: [new TextRun({ text: "Université de Kinshasa", size: 36, bold: true, color: P.primary, font: FONT_HEAD })] }),
     new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200, line: 360, lineRule: "atLeast" },
-      children: [new TextRun({ text: "Faculté des Sciences", size: 32, bold: true, color: P.primary, font: FONT_HEAD })] }),
+      children: [new TextRun({ text: "Faculté des Sciences et Technologies", size: 28, bold: true, color: P.primary, font: FONT_HEAD })] }),
     new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 800, line: 320, lineRule: "atLeast" },
       children: [new TextRun({ text: "Département de Mathématiques et Informatique", size: 26, color: P.body, font: FONT_BODY })] }),
     new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200, line: 320 },
@@ -255,7 +255,7 @@ function buildHeader() {
     new Paragraph({
       alignment: AlignmentType.CENTER,
       border: { bottom: { style: BorderStyle.SINGLE, size: 1, color: "000000" } },
-      children: [new TextRun({ text: "Mémoire de Licence — Moïse KASOMBO — UNIKIN / Faculté des Sciences",
+      children: [new TextRun({ text: "PlagiatIA — Moïse KASOMBO — UNIKIN / Faculté des Sciences et Technologies",
         size: 18, color: P.secondary, italics: true, font: FONT_BODY })],
     }),
   ]});

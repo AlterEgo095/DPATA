@@ -34,7 +34,7 @@ function buildConclusion(h) {
     P_body("La quatrième perspective est la poursuite de la recherche sur les thèmes abordés. Le présent mémoire constitue une première contribution, qui appelle des approfondissements : publication des résultats d'évaluation dans des revues scientifiques du domaine, participation aux campagnes d'évaluation internationales (PAN, SemEval), collaboration avec d'autres équipes de recherche africaines travaillant sur des problématiques similaires, encadrement de mémoires complémentaires sur des aspects spécifiques (détection du plagiat par IA générative, fine-tuning multilingue, etc.)."),
 
     H2("Perspectives IA : vers un écosystème universitaire intelligent"),
-    P_body("Au-delà des extensions décrites ci-dessus, la plateforme est conçue pour évoluer vers un véritable écosystème universitaire intelligent, dont le moteur anti-plagiat ne serait qu'un service parmi un bouquet plus large de services IA au service de l'enseignement supérieur. Cette vision à long terme, que nous esquissons ici, vise à positionner la solution non comme un simple logiciel anti-plagiat, mais comme une plateforme universitaire intelligente de référence."),
+    P_body("Au-delà des extensions décrites ci-dessus, la plateforme est conçue pour évoluer vers un véritable écosystème universitaire intelligent, dont le moteur anti-plagiat ne serait qu'un service parmi un bouquet plus large de services IA au service de l'enseignement supérieur. Cette vision à long terme, que nous esquissons ici, vise à positionner la solution non comme un simple outil anti-plagiat, mais comme une plateforme universitaire intelligente de référence."),
     H3("Détection du plagiat par IA générative"),
     P_body("L'évolution la plus urgente concerne la détection des contenus produits par les grands modèles de langage (ChatGPT, Claude, Gemini, etc.). Le présent mémoire identifie cette problématique comme l'un des fronts de recherche les plus actifs du domaine. Les pistes à explorer incluent : classificateurs supervisés spécialisés dans la distinction texte humain / texte IA, métriques de perplexité adaptées aux modèles multilingues, analyse stylométrique fine des régularités syntaxiques des LLM, et watermarking collaboratif avec les fournisseurs de modèles. La collaboration avec les éditeurs de LLM, dans le cadre d'initiatives internationales, pourrait faciliter l'accès à des métadonnées signalant les contenus générés."),
     H3("Correction automatique des citations"),
@@ -108,7 +108,7 @@ function buildConclusion(h) {
     P_body("Docker Documentation. https://docs.docker.com/"),
 
     H2("Sources académiques et institutionnelles"),
-    P_body("Université de Kinshasa. (2023). Règlement intérieur de la Faculté des Sciences."),
+    P_body("Université de Kinshasa. (2023). Règlement intérieur de la Faculté des Sciences et Technologies."),
     P_body("UNESCO. (2023). L'éthique de l'intelligence artificielle. Recommandations."),
     P_body("Ministère de l'Enseignement Supérieur et Universitaire de la RDC. (2022). Cadre normatif des études supérieures."),
 
