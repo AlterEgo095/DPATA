@@ -10,8 +10,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "PlagiatIA — Plateforme anti-plagiat IA | UNIKIN",
-  description: "Plateforme web intelligente de détection automatique du plagiat dans les travaux académiques. Cas pilote : Faculté des Sciences, Université de Kinshasa.",
+  title: "PlagiatIA — Plate-forme intelligente d'aide à la détection du plagiat | UNIKIN",
+  description: "Plate-forme intelligente d'aide à la détection du plagiat et au choix d'un sujet de mémoire. Cas de la Faculté des Sciences et Technologies, Université de Kinshasa.",
   keywords: ["plagiat", "IA", "Intelligence Artificielle", "UNIKIN", "Faculté des Sciences", "mémoire", "TFC", "NLP", "embeddings"],
   authors: [{ name: "Moïse KASOMBO" }],
 };

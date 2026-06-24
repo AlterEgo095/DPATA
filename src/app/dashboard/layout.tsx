@@ -6,7 +6,7 @@ import Link from 'next/link';
 import {
   LayoutDashboard, Building2, Network, Users, FileText, FlaskConical,
   ScrollText, Settings, LogOut, Loader2, ShieldCheck, ChevronRight,
-  GraduationCap, UserCog, BookOpen, Library, Globe
+  GraduationCap, UserCog, BookOpen, Library, Globe, Lightbulb
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -49,6 +49,7 @@ const NAV_SECTIONS = [
     items: [
       { href: '/dashboard/documents', label: 'Travaux & mémoires', icon: FileText, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN', 'TEACHER', 'STUDENT'] },
       { href: '/dashboard/analyses', label: 'Analyses IA', icon: FlaskConical, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN', 'TEACHER'] },
+      { href: '/dashboard/suggestions', label: 'Suggestion de sujets', icon: Lightbulb, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN', 'TEACHER', 'STUDENT'] },
       { href: '/dashboard/federation', label: 'Fédération inter-univ.', icon: Globe, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN'] },
     ],
   },
@@ -124,7 +125,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
           <div>
             <div className="font-bold text-slate-900 leading-none">PlagiatIA</div>
-            <div className="text-[10px] text-slate-500 mt-0.5">UNIKIN · Fac. Sciences</div>
+            <div className="text-[10px] text-slate-500 mt-0.5">UNIKIN · Fac. Sciences & Technologies</div>
           </div>
         </div>
 
