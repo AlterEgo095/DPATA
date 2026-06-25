@@ -183,9 +183,9 @@ function threeLineTable(headers, rows, captionText) {
 function buildCover() {
   const infoRows = [
     ["Présenté par", "Moïse KASOMBO"],
-    ["Travail de Fin d'Études", "Mémoire de Licence"],
+    ["Travail de Fin d'Études", "Mémoire de DEA"],
     ["Département", "Mathématiques et Informatique"],
-    ["Encadré par", "Prof. KASORO MULENDA Nathanaël"],
+    ["Encadré par", "Professeur MABELA ROSTIN"],
     ["Cadre", "Faculté des Sciences et Technologies — UNIKIN"],
     ["Année académique", "2025 - 2026"],
   ];
@@ -230,7 +230,7 @@ function buildCover() {
     new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200, line: 320 },
       children: [new TextRun({ text: "—  Travail de Fin d'Études  —", size: 26, italics: true, color: P.secondary, font: FONT_BODY })] }),
     new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 360, line: 460, lineRule: "atLeast" },
-      children: [new TextRun({ text: "Mémoire de Licence présenté en vue de l'obtention du grade de Licencié en Sciences Informatiques", size: 22, italics: true, color: P.body, font: FONT_BODY })] }),
+      children: [new TextRun({ text: "Mémoire de DEA présenté en vue de l'obtention du grade d'Ingénieur en Sciences Informatiques", size: 22, italics: true, color: P.body, font: FONT_BODY })] }),
     new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 400, after: 200, line: 520, lineRule: "atLeast" },
       children: [new TextRun({ text: "Développement d'une plate-forme", size: 36, bold: true, color: P.primary, font: FONT_HEAD })] }),
     new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 200, line: 520, lineRule: "atLeast" },
