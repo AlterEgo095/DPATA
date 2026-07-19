@@ -1,7 +1,16 @@
 // GET /api/subjects (liste) + POST (création)
+// PHASE 2: Robustesse Backend - Pagination + Search + Sort
+
 import { NextRequest, NextResponse } from 'next/server';
 import { loadDB, saveDB, genId, now, audit, type AcademicSubject } from '@/lib/store/db';
 import { getCurrentUser } from '@/lib/auth/jwt';
+import {
+  getPaginationParams,
+  createPaginatedResponse,
+  filterBySearchTerm,
+  sortArray,
+} from '@/lib/pagination';
+import { getSecurityHeaders, sanitizeError } from '@/lib/security';
 import { z } from 'zod';
 
 const CreateSchema = z.object({
@@ -23,58 +32,126 @@ const CreateSchema = z.object({
 });
 
 export async function GET(req: NextRequest) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
-  const db = await loadDB();
-  const { searchParams } = new URL(req.url);
-  const domain = searchParams.get('domain');
-  const facultyId = searchParams.get('facultyId');
-  const workType = searchParams.get('workType');
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Non authentifié', code: 'AUTH_REQUIRED' },
+        { status: 401, headers: getSecurityHeaders() }
+      );
+    }
 
-  let subjects = db.academicSubjects || [];
-  if (domain) subjects = subjects.filter(s => s.domain?.toLowerCase().includes(domain.toLowerCase()));
-  if (facultyId) subjects = subjects.filter(s => s.facultyId === facultyId);
-  if (workType) subjects = subjects.filter(s => s.workType === workType);
+    const db = await loadDB();
+    const { searchParams } = new URL(req.url);
+    
+    // Pagination
+    const pagination = getPaginationParams(searchParams);
+    
+    // Filters
+    const searchTerm = searchParams.get('search');
+    const domain = searchParams.get('domain');
+    const facultyId = searchParams.get('facultyId');
+    const workType = searchParams.get('workType');
+    const status = searchParams.get('status');
+    
+    // Sort
+    const sortBy = searchParams.get('sortBy') || 'createdAt';
+    const sortOrder = (searchParams.get('sortOrder') as 'asc' | 'desc') || 'desc';
 
-  return NextResponse.json({ subjects, total: subjects.length });
+    let subjects = db.academicSubjects || [];
+    
+    // Apply filters
+    if (searchTerm) {
+      subjects = filterBySearchTerm(subjects, searchTerm, ['title', 'description', 'keywords', 'domain']);
+    }
+    if (domain) subjects = subjects.filter(s => s.domain?.toLowerCase().includes(domain.toLowerCase()));
+    if (facultyId) subjects = subjects.filter(s => s.facultyId === facultyId);
+    if (workType) subjects = subjects.filter(s => s.workType === workType);
+    if (status) subjects = subjects.filter(s => s.status === status);
+
+    // Get total before pagination for accurate count
+    const totalItems = subjects.length;
+
+    // Sort
+    subjects = sortArray(subjects, sortBy, sortOrder);
+
+    // Paginate
+    const result = createPaginatedResponse(subjects, pagination, totalItems);
+
+    return NextResponse.json({
+      ...result,
+      filters: { domain, facultyId, workType, status },
+    }, { headers: getSecurityHeaders() });
+  } catch (e) {
+    const error = sanitizeError(e);
+    return NextResponse.json(error, { status: 500, headers: getSecurityHeaders() });
+  }
 }
 
 export async function POST(req: NextRequest) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
-  const body = await req.json();
-  const parsed = CreateSchema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ error: 'Données invalides', details: parsed.error.flatten() }, { status: 400 });
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Non authentifié', code: 'AUTH_REQUIRED' },
+        { status: 401, headers: getSecurityHeaders() }
+      );
+    }
 
-  const db = await loadDB();
-  if (!db.academicSubjects) db.academicSubjects = [];
+    const body = await req.json();
+    const parsed = CreateSchema.safeParse(body);
+    
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Données invalides', details: parsed.error.flatten(), code: 'VALIDATION_ERROR' },
+        { status: 400, headers: getSecurityHeaders() }
+      );
+    }
 
-  const subject: AcademicSubject = {
-    id: genId('sub'),
-    title: parsed.data.title,
-    description: parsed.data.description,
-    domain: parsed.data.domain,
-    field: parsed.data.field,
-    specialty: parsed.data.specialty,
-    level: parsed.data.level,
-    keywords: parsed.data.keywords,
-    objectives: parsed.data.objectives,
-    problemStatement: parsed.data.problemStatement,
-    facultyId: parsed.data.facultyId,
-    departmentId: parsed.data.departmentId,
-    academicYear: parsed.data.academicYear,
-    authorName: parsed.data.authorName,
-    workType: parsed.data.workType,
-    status: 'VALIDATED',
-    isOriginal: true,
-    synonyms: parsed.data.synonyms,
-    createdAt: now(),
-    updatedAt: now(),
-  };
+    const db = await loadDB();
+    if (!db.academicSubjects) db.academicSubjects = [];
 
-  db.academicSubjects.push(subject);
-  await saveDB(db);
-  await audit(user.sub, `${user.firstName} ${user.lastName}`, 'CREATE_SUBJECT', 'AcademicSubject', subject.id, { title: subject.title });
+    const subject: AcademicSubject = {
+      id: genId('sub'),
+      title: parsed.data.title,
+      description: parsed.data.description,
+      domain: parsed.data.domain,
+      field: parsed.data.field,
+      specialty: parsed.data.specialty,
+      level: parsed.data.level,
+      keywords: parsed.data.keywords,
+      objectives: parsed.data.objectives,
+      problemStatement: parsed.data.problemStatement,
+      facultyId: parsed.data.facultyId,
+      departmentId: parsed.data.departmentId,
+      academicYear: parsed.data.academicYear,
+      authorName: parsed.data.authorName,
+      workType: parsed.data.workType,
+      status: 'VALIDATED',
+      isOriginal: true,
+      synonyms: parsed.data.synonyms,
+      createdAt: now(),
+      updatedAt: now(),
+    };
 
-  return NextResponse.json({ subject }, { status: 201 });
+    db.academicSubjects.push(subject);
+    await saveDB(db);
+    
+    await audit(
+      user.sub,
+      `${user.firstName} ${user.lastName}`,
+      'CREATE_SUBJECT',
+      'AcademicSubject',
+      subject.id,
+      { title: subject.title }
+    );
+
+    return NextResponse.json(
+      { subject }, 
+      { status: 201, headers: getSecurityHeaders() }
+    );
+  } catch (e) {
+    const error = sanitizeError(e);
+    return NextResponse.json(error, { status: 500, headers: getSecurityHeaders() });
+  }
 }
