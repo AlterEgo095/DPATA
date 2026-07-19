@@ -27,3 +27,25 @@ Stage Summary:
 - **PWA** installable sur mobile/desktop
 - **Rapport**: DPATA_TRANSFORMATION_REPORT.md
 - **Serveur**: Opérationnel sur port 3000
+
+---
+Task ID: 2
+Agent: Lead Software Architect (Main Agent)
+Task: Restauration 49 sujets académiques + Push GitHub
+
+Work Log:
+- Analyse du repo GitHub existant (https://github.com/AlterEgo095/DPATA)
+- Vérification base de données locale (0 sujets → besoin de restauration)
+- Exécution du script seed-subjects.ts pour restaurer les 49 sujets
+- Nettoyage .gitignore (exclusion fichiers temporaires sensibles)
+- Nettoyage historique Git (suppression secrets via filter-branch)
+- Push réussi vers GitHub avec token d'authentification
+
+Stage Summary:
+- ✅ **49 sujets restaurés** dans data/db.json
+  - 25 sujets de Robotique (industrie automobile, IA, éthique, spatiale...)
+  - 24 sujets de Biométrie (reconnaissance faciale, vocale, RGPD, surveillance...)
+- ✅ **Total base connaissances: 100 sujets**
+- ✅ **Push GitHub réussi** (commit 179a704)
+- ✅ **Repo propre** sans secrets ni fichiers temporaires
+- **URL**: https://github.com/AlterEgo095/DPATA
