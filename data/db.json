@@ -20,6 +20,28 @@
   "matches": [],
   "auditLogs": [
     {
+      "id": "log-e2176ca9-750",
+      "userId": "u-super-admin",
+      "userName": "Super Administrateur",
+      "action": "LOGIN",
+      "entity": "User",
+      "entityId": "u-super-admin",
+      "details": "{\"migrated\":false}",
+      "ipAddress": "::1",
+      "createdAt": "2026-07-19T16:31:37.036Z"
+    },
+    {
+      "id": "log-f700d3a7-78b",
+      "userId": "u-super-admin",
+      "userName": "Super Administrateur",
+      "action": "LOGIN",
+      "entity": "User",
+      "entityId": "u-super-admin",
+      "details": "{\"migrated\":false}",
+      "ipAddress": "::1",
+      "createdAt": "2026-07-19T16:31:15.767Z"
+    },
+    {
       "id": "log-54533be3-feb",
       "userId": "u-super-admin",
       "userName": "Super Administrateur",
