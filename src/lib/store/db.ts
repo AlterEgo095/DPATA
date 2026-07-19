@@ -4,6 +4,8 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
+import { appCache, CACHE_KEYS } from '@/lib/cache';
+import { logger } from '@/lib/logger';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
@@ -301,4 +303,24 @@ export async function audit(
   // Garde les 1000 derniers logs
   if (db.auditLogs.length > 1000) db.auditLogs = db.auditLogs.slice(0, 1000);
   await saveDB(db);
+}
+
+// ============================================================
+// Cache-aware save function
+// ============================================================
+
+// Wrap saveDB to auto-invalidate cache
+export async function saveDBWithCache(db: DB, invalidatePatterns?: string[]): Promise<void> {
+  await saveDB(db);
+  
+  // Auto-invalidate relevant caches
+  if (!invalidatePatterns || invalidatePatterns.length === 0) {
+    appCache.invalidate(); // Invalidate all by default
+  } else {
+    for (const pattern of invalidatePatterns) {
+      appCache.invalidatePattern(pattern);
+    }
+  }
+  
+  logger.info('Database saved and cache invalidated', { patterns: invalidatePatterns });
 }
