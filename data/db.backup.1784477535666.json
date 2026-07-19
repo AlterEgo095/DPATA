@@ -6,30 +6,19 @@
     {
       "id": "u-super-admin",
       "email": "admin@unikin.ac.cd",
-      "passwordHash": "$2b$12$JWEqOcK3WOoxTl4nhrvMieqqeFpLw6SjLiBBCd/mrv..xd0phwW/m",
+      "passwordHash": "admin123",
       "firstName": "Super",
       "lastName": "Administrateur",
       "role": "SUPER_ADMIN",
       "isActive": true,
       "createdAt": "2026-07-19T12:47:37.098Z",
-      "updatedAt": "2026-07-19T16:12:16.064Z"
+      "updatedAt": "2026-07-19T12:47:37.098Z"
     }
   ],
   "documents": [],
   "analyses": [],
   "matches": [],
   "auditLogs": [
-    {
-      "id": "log-d77b188e-0aa",
-      "userId": "u-super-admin",
-      "userName": "Super Administrateur",
-      "action": "LOGIN",
-      "entity": "User",
-      "entityId": "u-super-admin",
-      "details": "{\"migrated\":false}",
-      "ipAddress": "::1",
-      "createdAt": "2026-07-19T16:13:14.293Z"
-    },
     {
       "id": "log-b29b288d-adf",
       "userId": "u-super-admin",
