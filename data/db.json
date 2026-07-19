@@ -20,6 +20,50 @@
   "matches": [],
   "auditLogs": [
     {
+      "id": "log-03d20426-c9b",
+      "userId": "u-super-admin",
+      "userName": "Super Administrateur",
+      "action": "LOGIN",
+      "entity": "User",
+      "entityId": "u-super-admin",
+      "details": "{\"migrated\":false}",
+      "ipAddress": "::1",
+      "createdAt": "2026-07-19T16:14:51.098Z"
+    },
+    {
+      "id": "log-cc5de2a3-883",
+      "userId": "u-super-admin",
+      "userName": "Super Administrateur",
+      "action": "LOGIN",
+      "entity": "User",
+      "entityId": "u-super-admin",
+      "details": "{\"migrated\":false}",
+      "ipAddress": "::1",
+      "createdAt": "2026-07-19T16:14:47.505Z"
+    },
+    {
+      "id": "log-412a8455-ea0",
+      "userId": "u-super-admin",
+      "userName": "Super Administrateur",
+      "action": "LOGIN",
+      "entity": "User",
+      "entityId": "u-super-admin",
+      "details": "{\"migrated\":false}",
+      "ipAddress": "::1",
+      "createdAt": "2026-07-19T16:14:43.428Z"
+    },
+    {
+      "id": "log-a0989c58-4e3",
+      "userId": "u-super-admin",
+      "userName": "Super Administrateur",
+      "action": "LOGIN",
+      "entity": "User",
+      "entityId": "u-super-admin",
+      "details": "{\"migrated\":false}",
+      "ipAddress": "::1",
+      "createdAt": "2026-07-19T16:14:42.909Z"
+    },
+    {
       "id": "log-d77b188e-0aa",
       "userId": "u-super-admin",
       "userName": "Super Administrateur",
