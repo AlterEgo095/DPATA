@@ -1,0 +1,43 @@
+{
+  "faculties": [],
+  "departments": [],
+  "promotions": [],
+  "users": [
+    {
+      "id": "u-super-admin",
+      "email": "admin@unikin.ac.cd",
+      "passwordHash": "admin123",
+      "firstName": "Super",
+      "lastName": "Administrateur",
+      "role": "SUPER_ADMIN",
+      "isActive": true,
+      "createdAt": "2026-07-19T12:47:37.098Z",
+      "updatedAt": "2026-07-19T12:47:37.098Z"
+    }
+  ],
+  "documents": [],
+  "analyses": [],
+  "matches": [],
+  "auditLogs": [
+    {
+      "id": "log-c47ac0ef-1fb",
+      "userId": "u-super-admin",
+      "userName": "Super Administrateur",
+      "action": "LOGIN",
+      "entity": "User",
+      "entityId": "u-super-admin",
+      "ipAddress": "::1",
+      "createdAt": "2026-07-19T12:47:37.131Z"
+    }
+  ],
+  "academicSubjects": [],
+  "subjectValidations": [],
+  "settings": {
+    "ia.threshold": "0.80",
+    "ia.model": "distiluse-base-multilingual-cased-v1",
+    "ia.scope": "faculty",
+    "ia.subjectThreshold": "0.20",
+    "app.name": "PlagiatIA — UNIKIN",
+    "app.university": "Université de Kinshasa"
+  }
+}
