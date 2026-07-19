@@ -2,6 +2,7 @@
 // PHASE 5: SCALABILITÉ - Performance Tracking
 
 import { NextRequest, NextResponse } from 'next/server';
+import { advancedCaches, globalQueue } from './scalability';
 
 // ============================================================================
 // PERFORMANCE METRICS
@@ -281,9 +282,6 @@ export function getHealthStatus(): HealthStatus {
   const memUsage = process.memoryUsage();
   const memUsed = memUsage.heapUsed / 1024 / 1024;
   const memTotal = memUsage.heapTotal / 1024 / 1024;
-  
-  // Import dynamically to avoid circular dependencies
-  const { advancedCaches, globalQueue } = require('./scalability');
 
   return {
     status: memUsed / memTotal > 0.9 ? 'degraded' : 'healthy',

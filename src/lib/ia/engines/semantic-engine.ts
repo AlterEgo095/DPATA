@@ -799,23 +799,24 @@ export class SemanticEmbeddingEngine implements IAnalysisEngine {
       'Étude exploratoire sur',
       'Impact de',
       'Optimisation de',
-      'Modélisation de',
-      'Évaluation de',
+      'Modelisation de',
+      'Evaluation de',
       'Contribution à',
       'Approche novatrice pour',
     ];
 
     const suffixes = [
       `dans le contexte ${domain}`,
-      ': une étude de cas`,
-      'perspectives et défis',
-      ': état de l\'art et perspectives',
-      ': approche méthodologique innovante',
+      ': une etude de cas',
+      'perspectives et defis',
+      ": etat de l'art et perspectives",
+      ': approche methodologique innovante',
     ];
 
     // Generate combinations
     for (let i = 0; i < Math.min(3, prefixes.length); i++) {
-      const alt = `${prefixes[i]} ${subject.title.split(':').[0]?.trim() || subject.title} ${suffixes[i] || ''}`;
+      const titlePart = subject.title.split(':')[0] || subject.title;
+      const alt = `${prefixes[i]} ${titlePart.trim()} ${suffixes[i] || ''}`;
       if (!alternatives.includes(alt)) {
         alternatives.push(alt.trim());
       }
@@ -823,10 +824,10 @@ export class SemanticEmbeddingEngine implements IAnalysisEngine {
 
     // Add specific variations
     if (subject.title.toLowerCase().includes('analyse')) {
-      alternatives.push(`Mise en œuvre pratique de ${subject.title.replace('Analyse', '').toLowerCase().trim()}`);
+      alternatives.push(`Mise en oeuvre pratique de ${subject.title.replace('Analyse', '').toLowerCase().trim()}`);
     }
-    if (subject.title.toLowerCase().includes('étude')) {
-      alternatives.push(`Expérimentation et validation ${subject.title.replace('Étude', '').replace('étude', '').toLowerCase().trim()}`);
+    if (subject.title.toLowerCase().includes('etude')) {
+      alternatives.push(`Expérimentation et validation ${subject.title.replace('Etude', '').replace('etude', '').toLowerCase().trim()}`);
     }
 
     return alternatives.slice(0, 6);
@@ -867,16 +868,5 @@ export class SemanticEmbeddingEngine implements IAnalysisEngine {
     return lines.join('\n');
   }
 }
-
-// ============================================================================
-// EXPORTS
-// ============================================================================
-
-export {
-  preprocessText,
-  buildEnhancedTFIDFModel,
-  vectorizeDocument,
-  VectorIndex,
-};
 
 export default SemanticEmbeddingEngine;

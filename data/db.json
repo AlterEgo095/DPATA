@@ -20,6 +20,17 @@
   "matches": [],
   "auditLogs": [
     {
+      "id": "log-4413cf11-5e1",
+      "userId": "u-super-admin",
+      "userName": "Super Administrateur",
+      "action": "LOGIN",
+      "entity": "User",
+      "entityId": "u-super-admin",
+      "details": "{\"migrated\":false}",
+      "ipAddress": "::1",
+      "createdAt": "2026-07-19T16:52:01.829Z"
+    },
+    {
       "id": "log-e2176ca9-750",
       "userId": "u-super-admin",
       "userName": "Super Administrateur",
