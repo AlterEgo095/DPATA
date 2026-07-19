@@ -52,3 +52,23 @@ prompt
 server.log
 # Skills directory
 /skills/
+
+# Temporary files
+/tool-results/
+/conversation.json
+/conversation_analysis.json
+/conversation_text.txt
+
+# Duplicate project folder
+/dpata-project/
+
+# Database binary
+/db/*.db
+
+# Downloaded files (keep structure)
+download/*.docx
+download/*.pdf
+download/*.png
+
+# Scripts output (memoire)
+/scripts/memoire_images/
