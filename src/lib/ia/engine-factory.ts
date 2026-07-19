@@ -1,5 +1,6 @@
 // Engine Factory - Allows plugging in different analysis engines
 // Phase 3 — Extensible architecture for DPATA AI Engine
+// PHASE 6 — Added Semantic & Hybrid engines
 
 import {
   IAnalysisEngine,
@@ -10,6 +11,8 @@ import {
   SubjectAnalysisInput,
 } from './types';
 import { TfidfEngine } from './engines/tfidf-engine';
+import { SemanticEmbeddingEngine } from './engines/semantic-engine';
+import { HybridEngine } from './engines/hybrid-engine';
 
 // ============================================================
 // Engine Registry
@@ -19,10 +22,10 @@ const engines: Map<EngineType, () => IAnalysisEngine> = new Map();
 
 // Register built-in engines
 engines.set('TFIDF', () => new TfidfEngine());
+engines.set('EMBEDDING', () => new SemanticEmbeddingEngine());
+engines.set('HYBRID', () => new HybridEngine());
 
 // Future engines can be registered here:
-// engines.set('EMBEDDING', () => new EmbeddingEngine());
-// engines.set('HYBRID', () => new HybridEngine());
 // engines.set('LLM', () => new LLMEngine());
 // engines.set('RAG', () => new RAGEngine());
 
@@ -32,13 +35,13 @@ engines.set('TFIDF', () => new TfidfEngine());
 
 /**
  * Get an engine instance by type
- * Falls back to TFIDF if the requested engine is not available
+ * Falls back to HYBRID if the requested engine is not available (best default)
  */
-export function getEngine(type: EngineType = 'TFIDF'): IAnalysisEngine {
+export function getEngine(type: EngineType = 'HYBRID'): IAnalysisEngine {
   const factory = engines.get(type);
   if (!factory) {
-    console.warn(`Engine ${type} not found, falling back to TFIDF`);
-    return engines.get('TFIDF')!();
+    console.warn(`Engine ${type} not found, falling back to HYBRID`);
+    return engines.get('HYBRID')!();
   }
   return factory();
 }
@@ -71,26 +74,30 @@ export function hasEngine(type: EngineType): boolean {
 
 /**
  * Analyze a document for plagiarism/similarity using the default or specified engine
+ * Default engine is now HYBRID for best accuracy
  */
 export async function analyzeDocument(
   query: string,
   corpus: Array<{ id: string; text: string }>,
-  options?: AnalysisOptions
+  options?: AnalysisOptions & { engine?: EngineType }
 ): Promise<AnalysisResult> {
-  const engine = getEngine(options?.engine);
+  // Default to hybrid engine for best results
+  const engineType = options?.engine || 'HYBRID';
+  const engine = getEngine(engineType);
   await engine.initialize();
   return engine.analyze(query, corpus, options);
 }
 
 /**
  * Validate an academic subject for originality
+ * Uses hybrid analysis by default for comprehensive validation
  */
 export async function validateAcademicSubject(
   subject: SubjectAnalysisInput,
   existingSubjects: unknown[],
   engineType?: EngineType
 ): Promise<SubjectValidationResult> {
-  const engine = getEngine(engineType);
+  const engine = getEngine(engineType || 'HYBRID');
   await engine.initialize();
   return engine.validateSubject(subject, existingSubjects);
 }
@@ -103,7 +110,7 @@ export async function generateSubjectAlternatives(
   similarSubjects: unknown[],
   engineType?: EngineType
 ): Promise<string[]> {
-  const engine = getEngine(engineType);
+  const engine = getEngine(engineType || 'HYBRID');
   await engine.initialize();
   return engine.generateAlternatives(subject, similarSubjects);
 }
@@ -114,6 +121,31 @@ export async function generateSubjectAlternatives(
 export async function checkEngineHealth(
   engineType?: EngineType
 ): Promise<{ status: 'healthy' | 'degraded' | 'unhealthy'; details: string }> {
-  const engine = getEngine(engineType);
+  const engine = getEngine(engineType || 'HYBRID');
   return engine.healthCheck();
+}
+
+/**
+ * Get information about all available engines and their health
+ */
+export async function getAllEnginesStatus(): Promise<Array<{
+  type: EngineType;
+  name: string;
+  version: string;
+  health: { status: 'healthy' | 'degraded' | 'unhealthy'; details: string };
+}>> {
+  const engineTypes = getAvailableEngines();
+  
+  return Promise.all(
+    engineTypes.map(async (type) => {
+      const engine = getEngine(type);
+      const health = await engine.healthCheck();
+      return {
+        type,
+        name: engine.name,
+        version: engine.version,
+        health,
+      };
+    })
+  );
 }
