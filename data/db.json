@@ -20,6 +20,46 @@
   "matches": [],
   "auditLogs": [
     {
+      "id": "log-a5eb86d3-5e4",
+      "userId": "u-super-admin",
+      "userName": "Super Administrateur",
+      "action": "LOGIN",
+      "entity": "User",
+      "entityId": "u-super-admin",
+      "ipAddress": "::1",
+      "createdAt": "2026-07-19T15:33:13.867Z"
+    },
+    {
+      "id": "log-07f76ade-486",
+      "userId": "u-super-admin",
+      "userName": "Super Administrateur",
+      "action": "LOGIN",
+      "entity": "User",
+      "entityId": "u-super-admin",
+      "ipAddress": "::1",
+      "createdAt": "2026-07-19T15:33:10.103Z"
+    },
+    {
+      "id": "log-41810c10-61b",
+      "userId": "u-super-admin",
+      "userName": "Super Administrateur",
+      "action": "LOGIN",
+      "entity": "User",
+      "entityId": "u-super-admin",
+      "ipAddress": "::1",
+      "createdAt": "2026-07-19T15:33:04.873Z"
+    },
+    {
+      "id": "log-3e371354-2af",
+      "userId": "u-super-admin",
+      "userName": "Super Administrateur",
+      "action": "LOGIN",
+      "entity": "User",
+      "entityId": "u-super-admin",
+      "ipAddress": "::1",
+      "createdAt": "2026-07-19T15:32:20.124Z"
+    },
+    {
       "id": "log-d3275c09-0e3",
       "userId": "u-super-admin",
       "userName": "Super Administrateur",
