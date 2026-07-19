@@ -11,8 +11,9 @@ import {
   SubjectAnalysisInput,
 } from './types';
 import { TfidfEngine } from './engines/tfidf-engine';
-import { SemanticEmbeddingEngine } from './engines/semantic-engine';
-import { HybridEngine } from './engines/hybrid-engine';
+// PHASE 6: New engines (temporarily disabled for stability)
+// import { SemanticEmbeddingEngine } from './engines/semantic-engine';
+// import { HybridEngine } from './engines/hybrid-engine';
 
 // ============================================================
 // Engine Registry
@@ -22,8 +23,8 @@ const engines: Map<EngineType, () => IAnalysisEngine> = new Map();
 
 // Register built-in engines
 engines.set('TFIDF', () => new TfidfEngine());
-engines.set('EMBEDDING', () => new SemanticEmbeddingEngine());
-engines.set('HYBRID', () => new HybridEngine());
+// engines.set('EMBEDDING', () => new SemanticEmbeddingEngine());
+// engines.set('HYBRID', () => new HybridEngine());
 
 // Future engines can be registered here:
 // engines.set('LLM', () => new LLMEngine());
@@ -35,13 +36,13 @@ engines.set('HYBRID', () => new HybridEngine());
 
 /**
  * Get an engine instance by type
- * Falls back to HYBRID if the requested engine is not available (best default)
+ * Falls back to TFIDF if the requested engine is not available
  */
-export function getEngine(type: EngineType = 'HYBRID'): IAnalysisEngine {
+export function getEngine(type: EngineType = 'TFIDF'): IAnalysisEngine {
   const factory = engines.get(type);
   if (!factory) {
-    console.warn(`Engine ${type} not found, falling back to HYBRID`);
-    return engines.get('HYBRID')!();
+    console.warn(`Engine ${type} not found, falling back to TFIDF`);
+    return engines.get('TFIDF')!();
   }
   return factory();
 }
@@ -74,15 +75,13 @@ export function hasEngine(type: EngineType): boolean {
 
 /**
  * Analyze a document for plagiarism/similarity using the default or specified engine
- * Default engine is now HYBRID for best accuracy
  */
 export async function analyzeDocument(
   query: string,
   corpus: Array<{ id: string; text: string }>,
   options?: AnalysisOptions & { engine?: EngineType }
 ): Promise<AnalysisResult> {
-  // Default to hybrid engine for best results
-  const engineType = options?.engine || 'HYBRID';
+  const engineType = options?.engine || 'TFIDF';
   const engine = getEngine(engineType);
   await engine.initialize();
   return engine.analyze(query, corpus, options);
@@ -90,14 +89,13 @@ export async function analyzeDocument(
 
 /**
  * Validate an academic subject for originality
- * Uses hybrid analysis by default for comprehensive validation
  */
 export async function validateAcademicSubject(
   subject: SubjectAnalysisInput,
   existingSubjects: unknown[],
   engineType?: EngineType
 ): Promise<SubjectValidationResult> {
-  const engine = getEngine(engineType || 'HYBRID');
+  const engine = getEngine(engineType || 'TFIDF');
   await engine.initialize();
   return engine.validateSubject(subject, existingSubjects);
 }
@@ -110,7 +108,7 @@ export async function generateSubjectAlternatives(
   similarSubjects: unknown[],
   engineType?: EngineType
 ): Promise<string[]> {
-  const engine = getEngine(engineType || 'HYBRID');
+  const engine = getEngine(engineType || 'TFIDF');
   await engine.initialize();
   return engine.generateAlternatives(subject, similarSubjects);
 }
@@ -121,7 +119,7 @@ export async function generateSubjectAlternatives(
 export async function checkEngineHealth(
   engineType?: EngineType
 ): Promise<{ status: 'healthy' | 'degraded' | 'unhealthy'; details: string }> {
-  const engine = getEngine(engineType || 'HYBRID');
+  const engine = getEngine(engineType || 'TFIDF');
   return engine.healthCheck();
 }
 
