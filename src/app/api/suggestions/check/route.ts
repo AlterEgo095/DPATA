@@ -61,9 +61,9 @@ export async function POST(req: NextRequest) {
     similarSubjects: similarSubjects.slice(0, 10),
     totalChecked: corpus.length,
     recommendation: isOriginal
-      ? '✅ Ce sujet semble original. Aucun travail similaire n\\'a été trouvé dans le corpus.'
+      ? "✅ Ce sujet semble original. Aucun travail similaire n'a été trouvé dans le corpus."
       : result.globalScore >= 0.50
-        ? '⚠️ Ce sujet est très proche d\\'un travail existant. Considérez le reformuler ou choisir un autre angle.'
-        : 'ℹ️ Ce sujet présente des similarités avec des travaux existants. Vérifiez les travaux listés pour vous différencier.',
+        ? "⚠️ Ce sujet est très proche d'un travail existant. Considérez le reformuler ou choisir un autre angle."
+        : "ℹ️ Ce sujet présente des similarités avec des travaux existants. Vérifiez les travaux listés pour vous différencier.",
   });
 }
