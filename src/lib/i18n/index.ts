@@ -1,9 +1,9 @@
 /**
  * Fonctions utilitaires i18n pour PlagiatIA
  * Solution custom légère basée sur JSON dictionaries
+ * Compatible Client ET Server
  */
 
-import { cookies } from 'next/headers';
 import { Locale, defaultLocale, cookieName, sanitizeLocale, locales } from './config';
 import frDictionary from './dictionaries/fr.json';
 import enDictionary from './dictionaries/en.json';
@@ -20,12 +20,19 @@ const dictionaries: Record<Locale, Dictionary> = {
 };
 
 /**
- * Obtient le locale depuis les cookies (côté serveur)
+ * Obtient le locale depuis les cookies (côté serveur uniquement)
+ * NOTE: Cette fonction doit être importée dynamiquement ou utilisée seulement dans Server Components
  */
 export async function getLocaleFromCookie(): Promise<Locale> {
-  const cookieStore = await cookies();
-  const cookieLocale = cookieStore.get(cookieName)?.value;
-  return sanitizeLocale(cookieLocale);
+  // Import dynamique pour éviter l'erreur côté client
+  try {
+    const { cookies } = await import('next/headers');
+    const cookieStore = await cookies();
+    const cookieLocale = cookieStore.get(cookieName)?.value;
+    return sanitizeLocale(cookieLocale);
+  } catch {
+    return defaultLocale;
+  }
 }
 
 /**
