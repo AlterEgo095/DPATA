@@ -102,6 +102,55 @@ PlagiatIA propose :
 - **PWA installable** (Service Worker, Manifest)
 - Notifications toast (Sonner)
 - Animations fluides (Framer Motion)
+- **Interface multilingue** 🇫🇷🇬🇧🇹🇿 (Français, English, Kiswahili)
+
+### 🚀 Fonctionnalités Premium (v0.3+)
+
+#### 🧠 Moteur Hybride IA Avancé
+| Fonction | Description |
+|----------|-------------|
+| **Sentence-BERT Simulé** | Embeddings 384 dimensions, 4 langues (FR/EN/SW/Lingala) |
+| **Scoring Hybride** | TF-IDF (35%) + Sémantique (45%) + Jaccard (20%) |
+| **Normalisation Min-Max** | Scores comparables entre documents |
+| **Analyse Multi-docs** | Matrice de similarité inter-documents |
+| **Suivi Progression** | Callback temps réel `analyzeWithProgress()` |
+
+#### 📄 Export PDF Professionnel
+- **3 formats** : Rapport complet, Synthèse 1 page, Certificat d'originalité
+- Design corporate PlagiatIA (emerald/slate)
+- Couleurs par type de plagiat (rouge=copy-paste, amber=paraphrase)
+- Support multilingue FR/EN
+- API : `GET /api/documents/[id]/export-pdf?format=full\|summary\|certificate`
+
+#### 📦 Mode Batch (Analyses Groupées)
+- Jusqu'à **50 documents** par batch
+- File d'attente **prioritaire** (high/normal/low)
+- **Parallélisation** max 3 analyses concurrentes
+- Suivi **progression temps réel**
+- Export **CSV/JSON** des résultats consolidés
+- Retry automatique (2 tentatives + backoff)
+
+#### 🌐 Fédération Inter-Universités
+- **Partenariat multi-universités** (UNIKIN, UNILU, UNIKIS...)
+- Recherche **fédérée** cross-universités
+- **Anonymisation SHA-256** des données partagées
+- Synchronisation **bidirectionnelle** des métadonnées
+- Dashboard gestion partenaires
+
+#### 📊 Statistiques Avancées
+- **Moteur statistique** : moyenne, médiane, écart-type, skewness, kurtosis
+- **Détection anomalies** automatique (pics de plagiat)
+- **Insights IA** avec recommandations actionnables
+- **5 graphiques** : Tendances, Distribution, Comparaison faculties, Types plagiat, Timeline
+- Export données CSV/JSON
+
+#### 🔌 API Publique v1
+- **RESTful versionnée** (`/api/v1/*`)
+- Authentification **API Keys** sécurisées
+- **Rate limiting** avancé (sliding window)
+- Documentation **OpenAPI 3.0** auto-générée
+- **12+ endpoints** : Documents, Analyses, Sujets, Statistiques
+- Dashboard gestion clés + Sandbox test
 
 ---
 
@@ -616,7 +665,7 @@ Le projet inclut un `Caddyfile` pour le reverse proxy :
 
 ## 🗺️ Roadmap
 
-### v0.2 (Current) ✅
+### v0.2 ✅ Complété
 - [x] Moteur TF-IDF natif
 - [x] Dashboard administratif
 - [x] Gestion multi-facultés
@@ -624,19 +673,19 @@ Le projet inclut un `Caddyfile` pour le reverse proxy :
 - [x] Interface responsive
 - [x] PWA support
 
-### v0.3 (En développement)
-- [ ] Moteur hybride (TF-IDF + Embeddings)
-- [ ] Intégration Sentence-BERT
-- [ ] Comparaison inter-universités (Fédération)
-- [ ] Export PDF des rapports
-- [ ] Mode batch (analyses groupées)
+### v0.3 ✅ Complété
+- [x] **Moteur hybride** (TF-IDF + Semantic Embeddings) — `src/lib/ia/sentence-bert.ts`
+- [x] **Intégration Sentence-BERT** simulée (distiluse-base-multilingual-cased-v1, 384 dims)
+- [x] **Comparaison inter-universités** (Fédération) — `src/lib/federation/`
+- [x] **Export PDF professionnel** des rapports — `src/lib/pdf/generator.ts`
+- [x] **Mode batch** (analyses groupées) — `src/lib/batch/`
 
-### v1.0 (Roadmap)
-- [ ] Interface multilingue (FR/EN/SW)
-- [ ] Module statistiques avancées
-- [ ] API publique pour intégrations
-- [ ] Application mobile native (React Native)
-- [ ] Cluster deployment (PostgreSQL + Redis)
+### v1.0 🔧 En cours
+- [x] **Interface multilingue** (FR/EN/SW) — `src/lib/i18n/`
+- [x] **Module statistiques avancées** — `src/lib/statistics/` + `/dashboard/statistics`
+- [x] **API publique** pour intégrations (v1) — `src/app/api/v1/`
+- [ ] Application mobile native (React Native) — *Prochaine étape*
+- [ ] Cluster deployment (PostgreSQL + Redis) — *Prochaine étape*
 
 ---
 

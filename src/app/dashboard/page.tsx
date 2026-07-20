@@ -11,6 +11,7 @@ import {
   Cpu, Database, Activity
 } from 'lucide-react';
 import Link from 'next/link';
+import { useTranslation } from '@/components/ui/language-switcher';
 
 // Dashboard components
 import { StatsOverview } from '@/components/dashboard/stats-overview';
@@ -37,6 +38,7 @@ interface Stats {
 }
 
 export default function DashboardPage() {
+  const { t } = useTranslation();
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -62,7 +64,7 @@ export default function DashboardPage() {
     );
   }
 
-  if (!stats) return <div>Erreur de chargement</div>;
+  if (!stats) return <div>{t('errors.generic')}</div>;
 
   // System health state
   const systemHealthy = stats.pendingAnalyses === 0;
@@ -77,22 +79,22 @@ export default function DashboardPage() {
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Tableau de bord</h1>
+          <h1 className="text-2xl font-bold text-slate-900">{t('dashboard.title')}</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Vue d&apos;ensemble de la plateforme PlagiatIA — Université de Kinshasa
+            {t('dashboard.subtitle')} — Université de Kinshasa
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Button asChild variant="outline" size="sm">
             <Link href="/dashboard/audit">
               <Activity className="h-4 w-4 mr-1.5" />
-              Journal d&apos;activité
+              {t('nav.audit')}
             </Link>
           </Button>
           <Button asChild size="sm" className="bg-emerald-600 hover:bg-emerald-700">
             <Link href="/dashboard/faculties">
               <Building2 className="h-4 w-4 mr-1.5" />
-              Gérer les facultés
+              {t('dashboard.manageFaculties')}
             </Link>
           </Button>
         </div>
@@ -128,14 +130,14 @@ export default function DashboardPage() {
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <Database className="h-4 w-4 text-blue-600" />
-                Répartition des travaux par faculté
+                {t('dashboard.documentsByFaculty')}
               </CardTitle>
-              <CardDescription>Volume documentaire supervisé</CardDescription>
+              <CardDescription>{t('dashboard.volumeDescription')}</CardDescription>
             </CardHeader>
             <CardContent>
               {stats.documentsByFaculty.length === 0 ? (
                 <div className="text-center py-8 text-sm text-slate-500">
-                  Aucun document déposé pour le moment.
+                  {t('dashboard.noDocuments')}
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -146,7 +148,7 @@ export default function DashboardPage() {
                       <div key={item.faculty}>
                         <div className="flex justify-between text-xs mb-1">
                           <span className="font-medium text-slate-700">{item.faculty}</span>
-                          <span className="text-slate-500">{item.count} travaux</span>
+                          <span className="text-slate-500">{item.count} {t('document.worksCount')}</span>
                         </div>
                         <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                           <div
@@ -170,7 +172,7 @@ export default function DashboardPage() {
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-amber-600" />
-                Score moyen de similarité
+                {t('dashboard.avgSimilarity')}
               </CardTitle>
               <CardDescription>Indicateur global de plagiat détecté</CardDescription>
             </CardHeader>
@@ -178,7 +180,7 @@ export default function DashboardPage() {
               {stats.avgScore === null ? (
                 <div className="text-center py-6">
                   <AlertTriangle className="h-8 w-8 text-slate-300 mx-auto mb-2" />
-                  <div className="text-sm text-slate-500">Aucune analyse disponible</div>
+                  <div className="text-sm text-slate-500">{t('dashboard.noAnalyses')}</div>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -187,7 +189,7 @@ export default function DashboardPage() {
                       {avgScorePct.toFixed(1)}%
                     </div>
                     <div className="text-xs text-slate-500 mt-1">
-                      Moyenne sur {stats.completedAnalyses} analyses
+                      {t('dashboard.avgOnAnalyses', { count: stats.completedAnalyses })}
                     </div>
                   </div>
                   <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
@@ -198,10 +200,10 @@ export default function DashboardPage() {
                   </div>
                   <div className="text-xs text-slate-500 text-center">
                     {avgScorePct > 30 
-                      ? '⚠️ Plagiat fréquent détecté' 
+                      ? t('dashboard.frequentPlagiarism') 
                       : avgScorePct > 15 
-                        ? 'Similarités modérées' 
-                        : '✓ Travaux majoritairement originaux'}
+                        ? t('dashboard.moderateSimilarities') 
+                        : t('dashboard.originalWorks')}
                   </div>
                 </div>
               )}
@@ -218,37 +220,37 @@ export default function DashboardPage() {
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-purple-600" />
-            Supervision administrative
+            {t('dashboard.adminSupervision')}
           </CardTitle>
-          <CardDescription>Accès rapide aux modules de gestion</CardDescription>
+          <CardDescription>{t('dashboard.quickAccess')}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Link href="/dashboard/faculties" className="group">
               <div className="rounded-lg border border-slate-200 p-3 hover:border-emerald-300 hover:bg-emerald-50/50 transition">
                 <Building2 className="h-5 w-5 text-emerald-600 mb-2" />
-                <div className="text-sm font-medium text-slate-900">Facultés</div>
+                <div className="text-sm font-medium text-slate-900">{t('nav.faculties')}</div>
                 <div className="text-xs text-slate-500">{stats.faculties} module(s)</div>
               </div>
             </Link>
             <Link href="/dashboard/users" className="group">
               <div className="rounded-lg border border-slate-200 p-3 hover:border-purple-300 hover:bg-purple-50/50 transition">
                 <Users className="h-5 w-5 text-purple-600 mb-2" />
-                <div className="text-sm font-medium text-slate-900">Utilisateurs</div>
+                <div className="text-sm font-medium text-slate-900">{t('nav.users')}</div>
                 <div className="text-xs text-slate-500">{stats.users} compte(s)</div>
               </div>
             </Link>
             <Link href="/dashboard/documents" className="group">
               <div className="rounded-lg border border-slate-200 p-3 hover:border-amber-300 hover:bg-amber-50/50 transition">
                 <FileText className="h-5 w-5 text-amber-600 mb-2" />
-                <div className="text-sm font-medium text-slate-900">Documents</div>
+                <div className="text-sm font-medium text-slate-900">{t('nav.documents')}</div>
                 <div className="text-xs text-slate-500">{stats.documents} travail(s)</div>
               </div>
             </Link>
             <Link href="/dashboard/analyses" className="group">
               <div className="rounded-lg border border-slate-200 p-3 hover:border-teal-300 hover:bg-teal-50/50 transition">
                 <FlaskConical className="h-5 w-5 text-teal-600 mb-2" />
-                <div className="text-sm font-medium text-slate-900">Analyses</div>
+                <div className="text-sm font-medium text-slate-900">{t('nav.analyses')}</div>
                 <div className="text-xs text-slate-500">{stats.completedAnalyses} terminée(s)</div>
               </div>
             </Link>

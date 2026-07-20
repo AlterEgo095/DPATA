@@ -186,7 +186,26 @@ export interface DB {
   auditLogs: AuditLog[];
   academicSubjects: AcademicSubject[];
   subjectValidations: SubjectValidation[];
+  batchJobs?: BatchJobRecord[]; // Analyses groupées
   settings: Record<string, string>;
+}
+
+export interface BatchJobRecord {
+  id: string;
+  name: string;
+  status: string;
+  config: string; // JSON
+  progress: number;
+  totalDocs: number;
+  processedDocs: number;
+  failedDocs: number;
+  createdBy: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  results: string; // JSON array of results
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ============================================================
@@ -216,6 +235,7 @@ const DEFAULT_DB: DB = {
   auditLogs: [],
   academicSubjects: [],
   subjectValidations: [],
+  batchJobs: [], // Analyses groupées
   settings: {
     'ia.threshold': '0.80',
     'ia.model': 'distiluse-base-multilingual-cased-v1',

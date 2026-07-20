@@ -1,7 +1,7 @@
 'use client';
 
 // Dashboard Layout with Responsive Sidebar
-// PHASE 3: Améliorations Frontend - Responsive Design
+// PHASE 3: Améliorations Frontend - Responsive Design + i18n
 
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
@@ -10,7 +10,7 @@ import {
   LayoutDashboard, Building2, Network, Users, FileText, FlaskConical,
   ScrollText, Settings, LogOut, Loader2, ShieldCheck, ChevronRight,
   GraduationCap, UserCog, BookOpen, Library, Globe, Lightbulb, Database,
-  Menu, X
+  Menu, X, Layers
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -21,6 +21,7 @@ import {
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { LanguageSwitcher, useTranslation } from '@/components/ui/language-switcher';
 
 interface User {
   id: string;
@@ -33,37 +34,38 @@ interface User {
 
 const NAV_SECTIONS = [
   {
-    label: 'Pilotage',
+    labelKey: 'pilotage',
     items: [
-      { href: '/dashboard', label: 'Tableau de bord', icon: LayoutDashboard, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN', 'TEACHER', 'STUDENT'] },
+      { href: '/dashboard', labelKey: 'nav.dashboard', icon: LayoutDashboard, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN', 'TEACHER', 'STUDENT'] },
     ],
   },
   {
-    label: 'Administration',
+    labelKey: 'administration',
     items: [
-      { href: '/dashboard/faculties', label: 'Facultés', icon: Building2, roles: ['SUPER_ADMIN'] },
-      { href: '/dashboard/departments', label: 'Départements', icon: Network, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN'] },
-      { href: '/dashboard/promotions', label: 'Promotions', icon: GraduationCap, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN'] },
-      { href: '/dashboard/users', label: 'Utilisateurs', icon: Users, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN'] },
-      { href: '/dashboard/students', label: 'Étudiants', icon: BookOpen, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN', 'TEACHER'] },
-      { href: '/dashboard/teachers', label: 'Enseignants', icon: UserCog, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN'] },
+      { href: '/dashboard/faculties', labelKey: 'nav.faculties', icon: Building2, roles: ['SUPER_ADMIN'] },
+      { href: '/dashboard/departments', labelKey: 'nav.departments', icon: Network, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN'] },
+      { href: '/dashboard/promotions', labelKey: 'nav.promotions', icon: GraduationCap, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN'] },
+      { href: '/dashboard/users', labelKey: 'nav.users', icon: Users, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN'] },
+      { href: '/dashboard/students', labelKey: 'nav.students', icon: BookOpen, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN', 'TEACHER'] },
+      { href: '/dashboard/teachers', labelKey: 'nav.teachers', icon: UserCog, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN'] },
     ],
   },
   {
-    label: 'Académique',
+    labelKey: 'academique',
     items: [
-      { href: '/dashboard/documents', label: 'Travaux & mémoires', icon: FileText, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN', 'TEACHER', 'STUDENT'] },
-      { href: '/dashboard/analyses', label: 'Analyses plagiat', icon: FlaskConical, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN', 'TEACHER'] },
-      { href: '/dashboard/validate-subject', label: 'Valider un sujet', icon: Lightbulb, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN', 'TEACHER', 'STUDENT'] },
-      { href: '/dashboard/subjects', label: 'Base de sujets', icon: Database, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN'] },
-      { href: '/dashboard/federation', label: 'Fédération inter-univ.', icon: Globe, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN'] },
+      { href: '/dashboard/documents', labelKey: 'nav.documents', icon: FileText, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN', 'TEACHER', 'STUDENT'] },
+      { href: '/dashboard/analyses', labelKey: 'nav.analyses', icon: FlaskConical, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN', 'TEACHER'] },
+      { href: '/dashboard/batch', labelKey: 'nav.batch', icon: Layers, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN'] },
+      { href: '/dashboard/validate-subject', labelKey: 'nav.validateSubject', icon: Lightbulb, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN', 'TEACHER', 'STUDENT'] },
+      { href: '/dashboard/subjects', labelKey: 'nav.subjects', icon: Database, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN'] },
+      { href: '/dashboard/federation', labelKey: 'nav.federation', icon: Globe, roles: ['SUPER_ADMIN', 'FACULTY_ADMIN'] },
     ],
   },
   {
-    label: 'Système',
+    labelKey: 'systeme',
     items: [
-      { href: '/dashboard/audit', label: "Journal d'audit", icon: ScrollText, roles: ['SUPER_ADMIN'] },
-      { href: '/dashboard/settings', label: 'Paramètres', icon: Settings, roles: ['SUPER_ADMIN'] },
+      { href: '/dashboard/audit', labelKey: 'nav.audit', icon: ScrollText, roles: ['SUPER_ADMIN'] },
+      { href: '/dashboard/settings', labelKey: 'nav.settings', icon: Settings, roles: ['SUPER_ADMIN'] },
     ],
   },
 ];
@@ -86,11 +88,13 @@ const ROLE_COLORS: Record<string, string> = {
 function SidebarContent({ 
   user, 
   pathname, 
-  onNavigate 
+  onNavigate,
+  t 
 }: { 
   user: User; 
   pathname: string; 
   onNavigate?: () => void;
+  t: (key: string) => string;
 }) {
   const initials = `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase();
 
@@ -102,7 +106,7 @@ function SidebarContent({
           <ShieldCheck className="h-5 w-5 text-white" />
         </div>
         <div>
-          <div className="font-bold text-slate-900 leading-none">PlagiatIA</div>
+          <div className="font-bold text-slate-900 leading-none">{t('common.appName')}</div>
           <div className="text-[10px] text-slate-500 mt-0.5">UNIKIN · Fac. Sciences & Technologies</div>
         </div>
       </div>
@@ -114,9 +118,9 @@ function SidebarContent({
           if (visibleItems.length === 0) return null;
           
           return (
-            <div key={section.label}>
+            <div key={section.labelKey}>
               <div className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                {section.label}
+                {t(section.labelKey)}
               </div>
               <div className="space-y-0.5">
                 {visibleItems.map(item => {
@@ -136,7 +140,7 @@ function SidebarContent({
                       )}
                     >
                       <Icon className={cn('h-4 w-4', active ? 'text-emerald-600' : 'text-slate-400 group-hover:text-slate-600')} />
-                      {item.label}
+                      {t(item.labelKey)}
                       {active && <ChevronRight className="h-3 w-3 ml-auto text-emerald-600" />}
                     </Link>
                   );
@@ -167,16 +171,16 @@ function SidebarContent({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>
-              <div className="text-xs text-slate-500">Connecté en tant que</div>
+              <div className="text-xs text-slate-500">{t('auth.loggedInAs')}</div>
               <div className="text-sm font-medium mt-0.5">{user.firstName} {user.lastName}</div>
               <div className={cn('inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-semibold', ROLE_COLORS[user.role])}>
                 {ROLE_LABELS[user.role]}
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => {}} className="text-red-600 focus:text-red-700 focus:bg-red-50">
+            <DropdownMenuItem onClick={() => handleLogout()} className="text-red-600 focus:text-red-700 focus:bg-red-50">
               <LogOut className="h-4 w-4 mr-2" />
-              Se déconnecter
+              {t('auth.signOut')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -188,9 +192,17 @@ function SidebarContent({
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { t } = useTranslation();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Fonction de déconnexion (définie ici pour être accessible dans SidebarContent)
+  async function handleLogout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    toast.success(t('auth.logout') + ' réussie');
+    router.replace('/');
+  }
 
   useEffect(() => {
     fetch('/api/auth/me')
@@ -209,12 +221,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       });
   }, [router]);
 
-  async function handleLogout() {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    toast.success('Déconnexion réussie');
-    router.replace('/');
-  }
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -225,6 +231,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (!user) return null;
 
+  // Trouver la page actuelle pour le titre
   const currentPage = NAV_SECTIONS.flatMap(s => s.items).find(i =>
     i.href === pathname || (i.href !== '/dashboard' && pathname.startsWith(i.href))
   );
@@ -233,7 +240,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen bg-slate-50 flex">
       {/* Desktop Sidebar - Fixed */}
       <aside className="hidden lg:flex w-64 bg-white border-r border-slate-200 flex-col fixed inset-y-0 z-30">
-        <SidebarContent user={user} pathname={pathname} />
+        <SidebarContent user={user} pathname={pathname} t={t} />
       </aside>
 
       {/* Mobile Sidebar - Sheet/Drawer */}
@@ -243,6 +250,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             user={user} 
             pathname={pathname} 
             onNavigate={() => setSidebarOpen(false)}
+            t={t}
           />
         </SheetContent>
       </Sheet>
@@ -265,23 +273,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             
             <div>
               <h2 className="text-base font-semibold text-slate-900">
-                {currentPage?.label || 'Tableau de bord'}
+                {currentPage ? t(currentPage.labelKey) : t('nav.dashboard')}
               </h2>
               <p className="text-xs text-slate-500 hidden sm:block">
-                Année académique 2025-2026 · {ROLE_LABELS[user.role]}
+                {t('dashboard.academicYear')} · {ROLE_LABELS[user.role]}
               </p>
             </div>
           </div>
           
           <div className="flex items-center gap-3">
+            {/* System status indicator */}
             <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-medium border border-emerald-100">
               <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-              Système opérationnel
+              {t('dashboard.operational')}
             </div>
+            
+            {/* Language Switcher */}
+            <LanguageSwitcher variant="toggle" size="sm" />
+            
             <Button asChild size="sm" variant="outline" className="hidden md:inline-flex">
               <Link href="/dashboard/documents">
                 <FileText className="h-4 w-4 mr-1.5" />
-                Déposer un travail
+                {t('document.upload')}
               </Link>
             </Button>
           </div>
