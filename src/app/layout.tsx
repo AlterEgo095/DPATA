@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
+import { PWAProvider } from "@/components/pwa/pwa-provider";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -71,7 +72,9 @@ export default function RootLayout({
         <meta name="msapplication-TileImage" content="/icons/icon-144x144.png" />
       </head>
       <body className={`${inter.variable} antialiased bg-background text-foreground`}>
-        {children}
+        <PWAProvider>
+          {children}
+        </PWAProvider>
         <Toaster />
         <SonnerToaster richColors position="top-right" />
       </body>
