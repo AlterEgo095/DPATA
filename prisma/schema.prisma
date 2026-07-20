@@ -91,6 +91,8 @@ model User {
   analyses        Analysis[]
   auditLogs       AuditLog[]
   refreshTokens   RefreshToken[]
+  batchJobs       BatchJob[]
+  apiKeys         ApiKey[]
 }
 
 model RefreshToken {
@@ -249,6 +251,60 @@ model Setting {
   updatedAt DateTime @updatedAt
 }
 
+// ============================================================
+// BATCH ANALYSES (Analyses Groupées)
+// ============================================================
+
+enum BatchJobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum BatchPriority {
+  LOW
+  NORMAL
+  HIGH
+}
+
+enum BatchEngine {
+  TFIDF
+  HYBRID
+  SEMANTIC
+}
+
+enum BatchScope {
+  FACULTY
+  DEPARTMENT
+  PROMOTION
+  ALL
+}
+
+model BatchJob {
+  id            String         @id @default(cuid())
+  name          String
+  status        BatchJobStatus @default(PENDING)
+  config        String         // JSON: BatchConfig
+  progress      Int            @default(0) // 0-100
+  totalDocs     Int
+  processedDocs Int            @default(0)
+  failedDocs    Int            @default(0)
+  createdBy     String
+  creator       User           @relation(fields: [createdBy], references: [id])
+  startedAt     DateTime?
+  completedAt   DateTime?
+  results       String?        // JSON array of BatchResult
+  error         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  
+  @@index([status])
+  @@index([createdBy])
+  @@index([createdAt])
+}
+
 model AuditLog {
   id        String   @id @default(cuid())
   userId    String?
@@ -262,4 +318,56 @@ model AuditLog {
 
   @@index([userId])
   @@index([entity, entityId])
+}
+
+// ============================================================
+// API KEYS (Intégrations Tierces)
+// ============================================================
+
+model ApiKey {
+  id              String    @id @default(cuid())
+  name            String
+  keyHash         String    @unique // bcrypt hash
+  prefix          String    // pk_live_xxx ou pk_test_xxx pour affichage
+  permissions     String    @default("[\"read\"]") // JSON array: read, write, admin
+  rateLimit       Int       @default(1000) // requêtes/heure
+  ipWhitelist     String?   // JSON array d'IPs autorisées (null = toutes)
+  isValid         Boolean   @default(true)
+  expiresAt       DateTime?
+  lastUsedAt      DateTime?
+  usageCount      Int       @default(0)
+  createdBy       String
+  creator         User      @relation(fields: [createdBy], references: [id])
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Logs d'utilisation de l'API
+  apiLogs         ApiAccessLog[]
+  
+  @@index([keyHash])
+  @@index([prefix])
+  @@index([createdBy])
+}
+
+// ============================================================
+// API ACCESS LOGS (Traçabilité des appels API)
+// ============================================================
+
+model ApiAccessLog {
+  id          String   @id @default(cuid())
+  apiKeyId    String
+  apiKey      ApiKey   @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  method      String   // GET, POST, PUT, DELETE
+  path        String   // Chemin de la requête
+  statusCode  Int      // Code réponse
+  responseTimeMs Int   // Temps de réponse en ms
+  ipAddress   String?
+  userAgent   String?
+  requestId   String   // ID unique de la requête
+  error       String?  // Message d'erreur si échec
+  createdAt   DateTime @default(now())
+  
+  @@index([apiKeyId])
+  @@index([createdAt])
+  @@index([path])
 }

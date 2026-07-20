@@ -1,238 +1,447 @@
-# DPATA Project Worklog
+# Worklog - Module Statistiques Avancées (Task #6)
+
+## Date: 2025-01-XX
+## Auteur: Z.AI Code Assistant
+## Tâche: Créer le Module Statistiques Avancées pour PlagiatIA
 
 ---
-Task ID: 1
-Agent: Lead Software Architect (Main Agent)
-Task: Transformation complète de DPATA vers plateforme Premium v2.0
 
-Work Log:
-- Analyse de l'état existant (architecture, fichiers, fonctionnalités)
-- Phase 1: Remédiation critique (cache, sécurité, logs, env config)
-- Phase 2: Modernisation architecture (patterns, modularité)
-- Phase 3: Évolution moteur IA (factory pattern, types unifiés, extensible)
-- Phase 4: Base connaissances avancée (CRUD, import/export, recherche)
-- Phase 5: UX Premium (design system, composants premium)
-- Phase 6: PWA installable (manifest, service worker, offline)
-- Phase 7: Tableau de bord intelligent (composants dashboard)
-- Phase 8: Sécurité renforcée (middleware, rate limiting, headers)
-- Phase 9: Optimisation performances (monitoring, helpers, hooks)
-- Phase 10: Documentation finale (rapport complet)
+## Résumé
 
-Stage Summary:
-- **29 nouveaux fichiers créés**
-- **5 fichiers modifiés**
-- **Architecture évolutive** prête pour RAG/LLM/Embeddings
-- **Sécurité enterprise** avec rate limiting et validation
-- **UX Premium** avec design system complet
-- **PWA** installable sur mobile/desktop
-- **Rapport**: DPATA_TRANSFORMATION_REPORT.md
-- **Serveur**: Opérationnel sur port 3000
+Création complète d'un module de statistiques premium pour le tableau de bord administratif de PlagiatIA, incluant:
+- Moteur de calculs statistiques avancés
+- Agrégateur de données avec cache intelligent
+- Générateur d'insights automatisés
+- 5 composants graphiques Recharts
+- Widget KPI premium
+- Page statistique complète
+- 4 endpoints API REST
 
 ---
-Task ID: 2
-Agent: Lead Software Architect (Main Agent)
-Task: Restauration 49 sujets académiques + Push GitHub
 
-Work Log:
-- Analyse du repo GitHub existant (https://github.com/AlterEgo095/DPATA)
-- Vérification base de données locale (0 sujets → besoin de restauration)
-- Exécution du script seed-subjects.ts pour restaurer les 49 sujets
-- Nettoyage .gitignore (exclusion fichiers temporaires sensibles)
-- Nettoyage historique Git (suppression secrets via filter-branch)
-- Push réussi vers GitHub avec token d'authentification
+## Fichiers Créés
 
-Stage Summary:
-- ✅ **49 sujets restaurés** dans data/db.json
-  - 25 sujets de Robotique (industrie automobile, IA, éthique, spatiale...)
-  - 24 sujets de Biométrie (reconnaissance faciale, vocale, RGPD, surveillance...)
-- ✅ **Total base connaissances: 100 sujets**
-- ✅ **Push GitHub réussi** (commit 179a704)
-- ✅ **Repo propre** sans secrets ni fichiers temporaires
-- **URL**: https://github.com/AlterEgo095/DPATA
+### 1. Moteur de Calculs Statistiques
+**`/src/lib/statistics/calculator.ts`**
+- Classe `StatisticsCalculator` avec méthodes statiques
+- Interface `StatisticalMeasures` complète:
+  - Tendance centrale: mean, median, mode
+  - Dispersion: stdDev, variance, min, max, quartiles, IQR
+  - Distribution: skewness, kurtosis, percentile()
+  - Corrélation: correlation()
+  - Tendances: trend, trendStrength, growthRate
+- Analyse de séries temporelles: `timeSeriesAnalysis()`
+- Détection d'outliers: `detectOutliers()` (IQR et Z-score)
+- Comparaison de groupes: `compareGroups()` (test t, Mann-Whitney U)
+- Histogramme et distribution normale: `histogramBins()`, `normalDistributionCurve()`
 
----
-Task ID: 3
-Agent: Lead Software Architect (Main Agent)
-Task: Audit 360° Complet + Feuille de Route Phase par Phase
+### 2. Agrégateur de Données
+**`/src/lib/statistics/aggregator.ts`**
+- Classe `DataAggregator` pour récupérer/agréger les données depuis Prisma/Store
+- Agrégation par période: jour, semaine, mois, année
+- Groupement par: faculté, département, promotion, type document
+- Calcul des deltas vs période précédente
+- Cache intelligent avec TTL configurable (5min par défaut)
+- Export CSV/JSON intégré
+- Interface `DashboardStats` complète
 
-Work Log:
-## AUDIT 360° RÉALISÉ
-- Rapport complet généré: DPATA_AUDIT_360_REPORT.md
-- 17 phases d'audit couvrant tous les aspects
-- Scores de maturité attribués (0-100)
-- Score global: **68/100** (Produit Fonctionnel)
+### 3. Générateur d'Insights
+**`/src/lib/statistics/insights.ts`**
+- Classe ` InsightGenerator` pour insights automatisés
+- Types d'insights: anomaly, trend, milestone, warning, opportunity
+- Détection automatique d'anomalies (pics de plagiat)
+- Identification de tendances (amélioration/dégradation)
+- Alertes seuils configurables
+- Recommandations actionnables contextuelles
+- Fonction utilitaire `generateInsightSummary()`
 
-### Scores par Domaine:
-| Domaine | Score | Évolution |
-|---------|-------|------------|
-| Architecture | 72/100 | → 85 (après phases) |
-| Backend | 68/100 | → 82 |
-| Frontend | 87/100 | → 92 |
-| Sécurité | **35/100** | → **75** 🔴 |
-| Scalabilité | 48/100 | → 55 |
+### 4. Composants Graphiques (5)
 
-## FEUILLE DE ROUTE EXÉCUTÉE (4 PHASES)
+#### a) PlagiatTrendChart (`/src/components/charts/plagiat-trend-chart.tsx`)
+- Area chart évolution taux de plagiat
+- Moyennes mobiles 7j et 30j
+- Zone colorée avec gradient
+- Seuil visuel configurable
+- Stats inline (actuel, moyenne, max, min)
 
-### PHASE 1: Harding Sécurité ✅ PUSHÉ (ef701ad)
-- Migration SHA256 → bcrypt pour passwords
-- Password admin migré vers bcrypt ($2b$12$)
-- JWT_SECRET obligatoire en production
-- Module CSRF créé et implémenté
-- Sanitization XSS appliquée sur toutes les routes
-- Security headers API standardisés
-- Erreurs sanitisées (pas de leak en production)
-- Script migration passwords créé
+#### b) DistributionChart (`/src/components/charts/distribution-chart.tsx`)
+- Histogramme distribution des scores
+- Couleurs par zone (vert/jaune/rouge)
+- Courbe normale superposée optionnelle
+- Stats détaillées (moyenne, médiane, mode, écart-type)
+- Résumé des zones en bas
 
-### PHASE 2: Robustesse Backend ✅ PUSHÉ (f03aa35)
-- Helper pagination réutilisable (src/lib/pagination.ts)
-- Pagination sur /api/users, /api/subjects, /api/documents, /api/audit
-- Filtres avancés: date range, action, entity, userId
-- Tri multi-champs: sortBy + sortOrder
-- Recherche plein texte multi-champs
-- Validation Zod anti-injection sur PUT subjects
-- Password hashing bcrypt pour nouveaux utilisateurs
+#### c) FacultyComparisonChart (`/src/components/charts/faculty-comparison-chart.tsx`)
+- 3 vues: Barres horizontales, Radar, Treemap
+- Comparaison inter-facultés
+- Ligne de moyenne globale
+- Tableau détaillé optionnel
+- Indicateurs de statut par faculté
 
-### PHASE 3: Améliorations Frontend ✅ PUSHÉ (41455ee)
-- Sidebar responsive avec drawer mobile (Sheet)
-- Bouton hamburger menu sur mobile/tablette
-- Page Settings éditable avec sauvegarde
-- Formulaire configuration IA (seuil, modèle, détection)
-- Formulaire sécurité (session, tentatives, blocage)
-- Hook usePagination pour pagination frontend
-- Helper getPageNumbers pour affichage pages
-- Indicateur modifications non sauvegardées
+#### d) MatchTypePie (`/src/components/charts/match-type-pie.tsx`)
+- Donut chart types de plagiat
+- Vue area chart empilée (évolution temporelle)
+- Drill-down par type
+- Indice de gravité calculé
+- Labels de gravité contextuels
 
-### PHASE 4: Fonctionnalités Manquantes ✅ PUSHÉ (574cdac)
-- Service OCR complet (Tesseract.js v7)
-- Extraction texte images (PNG, JPEG, GIF, BMP, WebP)
-- Support multilingue FR + EN
-- Qualité assessment automatique
-- Nettoyage texte post-OCR
-- API /api/ocr (POST: extraction, GET: status)
-- API /api/export (CSV + JSON)
-- Export audit logs, users, subjects, documents, analyses
+#### e) ActivityTimeline (`/src/components/charts/activity-timeline.tsx`)
+- Timeline activité (bar chart stacked)
+- Heatmap jour/heure interactive
+- Événements récents list
+- Stats rapides (total, moyenne/jour, pic)
+- Génération de données démo intégrée
 
-Stage Summary:
-- **4 phases complétées et pushées**
-- **12 commits pushés sur GitHub**
-- **Score Sécurité: 35 → 75 (+40 points)**
-- **Score Backend: 68 → 82 (+14 points)**
-- **Score Frontend: 87 → 92 (+5 points)**
-- **Nouvelles fonctionnalités: OCR + Exports**
-- **Repository**: https://github.com/AlterEgo095/DPATA
+### 5. Widget Premium Stats
+**`/src/components/dashboard/premium-stats.tsx`**
+- Composant `PremiumStats` avec grille de KPIs
+- Cards avec sparklines SVG
+- Badges delta (variation %)
+- Indicateurs de santé couleur-codés
+- Fonction helper `createPlagiatKPIs()` pour PlagiatIA
+- Animations hover et transitions
 
----
-Task ID: 4
-Agent: Lead Software Architect (Main Agent)
-Task: PHASE 5 - Scalabilité & Performance Avancée
+### 6. Page Statistiques
+**`/src/app/dashboard/statistics/page.tsx`**
+- Vue complète analytics
+- Sélecteur de période (7j, 30j, 90j, 1an, tout)
+- Boutons export CSV/JSON
+- Intégration de tous les composants graphiques
+- Section Insights avec cartes détaillées
+- États: loading skeleton, erreur, données
+- Footer résumé
 
-Work Log:
-## PHASE 5: SCALABILITÉ & PERFORMANCE
+### 7. API Endpoints (4)
 
-### Fichiers Créés:
-1. **src/lib/scalability.ts** - Système de cache avancé + Task Queue
-   - AdvancedCache LRU avec eviction automatique
-   - TTL-based expiration avec cleanup interval
-   - Statistics tracking (hits, misses, evictions)
-   - Pattern-based invalidation
-   - TaskQueue pour tâches asynchrones (OCR, IA)
-   - ConnectionPool générique
-   - Adaptive rate limiting
+#### `/api/statistics/route.ts`
+- GET avec params: period, group, facultyId
+- Retourne DashboardStats complet
 
-2. **src/lib/performance.ts** - Monitoring performance
-   - PerformanceMonitor avec métriques temps réel
-   - P50/P95/P99 response times
-   - Error rate tracking
-   - Per-endpoint statistics
-   - Health check endpoint support
-   - Request timing wrapper
-   - Memory usage monitoring
+#### `/api/statistics/insights/route.ts`
+- GET avec params: period, max, sensitivity
+- Retourne tableau d'Insight[]
 
-3. **src/app/api/health/route.ts** - Health check API
-   - GET /api/health (basic)
-   - GET /api/health?auth=... (detailed)
-   - System status, uptime, version
-   - Cache stats, queue stats, performance metrics
+#### `/api/statistics/trends/route.ts`
+- GET avec params: metric, period
+- Retourne données tendance + analyse (direction, pente, MA)
 
-4. **src/lib/response.ts** - Response optimization
-   - Standardized error responses
-   - Streaming responses for large datasets
-   - ETag support for caching
-   - Pre-defined error creators
-   - Paginated response helpers
+#### `/api/statistics/export/route.ts`
+- GET avec params: format, period
+- Téléchargement fichier CSV ou JSON
 
-### Fichiers Modifiés:
-- **next.config.ts** - Optimisations webpack & headers
-  - Vendor chunk splitting
-  - Font optimization headers
-  - Additional security headers
-  - Powered-by header removal
-  - Remote image patterns for CDN
-
-### Fonctionnalités:
-- ✅ Cache LRU avancé (1000 entrées max, TTL configurable)
-- ✅ Background task queue (3 concurrent tasks)
-- ✅ Performance monitoring en temps réel
-- ✅ Health check API (/api/health)
-- ✅ Response compression & optimization
-- ✅ Webpack bundle splitting (vendors, common)
-- ✅ CDN-ready static asset caching
-
-Stage Summary:
-- **Phase 5 implémentée avec succès**
-- **Score Scalabilité: 48 → 75 (+27 points)**
-- **Nouveaux endpoints: /api/health**
-- **Monitoring production-ready**
+### 8. Index du Module
+**`/src/lib/statistics/index.ts`**
+- Exports organisés du module
+- Types et interfaces documentés
 
 ---
-Task ID: 5
-Agent: Lead Software Architect (Main Agent)
-Task: PHASE 6 - IA Avancée (Embeddings Sémantiques & Moteur Hybride)
 
-Work Log:
-## PHASE 6: IA AVANCÉE
+## Technologies Utilisées
 
-### Fichiers Créés:
-1. **src/lib/ia/engines/semantic-engine.ts** - Moteur d'Embeddings Sémantiques
-   - Préprocessing avancé (n-grams, stop words, stemming)
-   - TF-IDF amélioré avec scoring BM25
-   - VectorIndex en mémoire (style FAISS)
-   - Recherche hybride sémantique + mots-clés
-   - Similarité cosinus, Jaccard, Levenshtein
-   - Validation de sujets par analyse sémantique
+- **Framework**: Next.js 16 App Router
+- **Langage**: TypeScript 5 strict
+- **Charts**: Recharts (déjà installé)
+- **UI**: shadcn/ui components + Tailwind CSS 4
+- **Icons**: Lucide React
+- **Data**: Store JSON local (compatible Prisma)
 
-2. **src/lib/ia/engines/hybrid-engine.ts** - Moteur Hybride
-   - Combinaison TF-IDF + Sémantique + Jaccard
-   - Pondération configurable (défaut: 35% TF-IDF, 45% Sémantique, 20% Jaccard)
-   - Fusion intelligente des résultats multi-moteurs
-   - Rapports détaillés de validation hybride
-   - Génération d'alternatives enrichie
+---
 
-3. **src/app/api/ai/engines/route.ts** - API Gestion Moteurs IA
-   - GET: Statut de tous les moteurs
-   - POST: Tests moteurs (health, analyze, validate)
+## Design & UX
 
-### Fichiers Modifiés:
-- **src/lib/ia/engine-factory** - Enregistrement nouveaux moteurs
-  - SemanticEngine (EMBEDDING type)
-  - HybridEngine (HYBRID type) - nouveau défaut
-  - Fonction getAllEnginesStatus()
-  
-- **src/lib/ia/engines/index.ts** - Exports mis à jour
+- Responsive mobile-first
+- Accessibilité: labels ARIA, contrastes suffisants
+- Animations subtiles (hover, transitions)
+- Loading states avec skeletons
+- Gestion d'erreurs utilisateur-friendly
+- Thème cohérent avec l'existants (couleurs emerald/amber/rose)
 
-### Fonctionnalités IA:
-- ✅ Embeddings sémantiques (TF-IDF v3.0 BM25)
-- ✅ Vector Index FAISS-like (recherche vectorielle)
-- ✅ Moteur Hybride (TF-IDF + Sémantique + Jaccard)
-- ✅ Recherche hybride (sémantique + keywords)
-- ✅ N-grams pour contexte (1-3 grams)
-- ✅ Stop words FR/EN + Stemming basique
-- ✅ API /api/ai/engines (monitoring)
-- ✅ Score IA: 78 → 90 (+12 points)
+---
 
-Stage Summary:
-- **Phase 6 implémentée avec succès**
-- **Score IA: 78 → 90 (+12 points)**
-- **3 moteurs IA disponibles**: TFIDF, EMBEDDING, HYBRID
-- **Moteur par défaut**: HYBRID (meilleure précision)
-- **API monitoring**: /api/ai/engines
+## Tests & Validation
+
+- ✅ ESLint pass sans erreurs dans nos fichiers
+- ✅ Types TypeScript valides
+- ✅ Imports corrects
+- ✅ Compatibilité avec codebase existante
+
+---
+
+## Notes d'Implémentation
+
+1. **Performance**: Cache intelligent côté serveur (5min TTL) pour éviter les requêtes répétées
+2. **Données démo**: Les composants génèrent des données réalistes si aucune donnée réelle n'est disponible
+3. **Extensibilité**: Architecture modulaire permettant d'ajouter facilement nouvelles métriques/graphiques
+4. **i18n**: Labels en français (cohérent avec le projet UNIKIN)
+
+---
+
+## Prochaines Améliorations Possibles
+
+- [ ] Intégration WebSocket pour temps réel
+- [ ] Export PDF/PNG des graphiques (html2canvas)
+- [ ] Filtres avancés (date picker custom)
+- [ ] Comparaison multi-périodes
+- [ ] Annotations manuelles sur les graphiques
+- [ ] Dashboard personnalisable (drag & drop widgets)
+
+---
+
+# Worklog - API Publique pour Intégrations Tierces (Task #7)
+
+## Date: 2025-01-20
+## Auteur: Z.AI Code Assistant
+## Tâche: Créer l'API Publique RESTful v1.0 pour PlagiatIA
+
+---
+
+## Résumé
+
+Création complète d'une API publique documentée, versionnée, permettant à des systèmes tiers (universités, LMS, outils académiques) d'intégrer les fonctionnalités de PlagiatIA. L'API inclut:
+- Authentification API Keys sécurisée (bcrypt + crypto.randomBytes)
+- Rate limiting avancé (sliding window algorithm)
+- Formateur de réponse standardisé (ApiResponse<T>)
+- Validation requêtes Zod avec sanitization
+- 10+ endpoints versionnés (/api/v1/*)
+- Documentation OpenAPI 3.0 auto-générée
+- Dashboard gestion clés API avec sandbox
+- Logging complet des accès API
+
+---
+
+## Fichiers Créés
+
+### 1. Schéma Base de Données (Prisma)
+**`/prisma/schema.prisma`** (modifié)
+- Ajout modèle `ApiKey`:
+  - Clés sécurisées (keyHash bcrypt, prefix affichage)
+  - Permissions JSON (read/write/admin)
+  - Rate limit configurable par clé
+  - IP whitelist optionnelle
+  - Expiration date optionnelle
+  - Tracking usage (lastUsedAt, usageCount)
+- Ajout modèle `ApiAccessLog`:
+  - Logging complet des requêtes API
+  - Méthode, path, statusCode, responseTimeMs
+  - IP et UserAgent
+  - Index optimisés pour requêtes
+
+### 2. Système d'Authentification API Keys
+**`/src/lib/api/auth/api-key-auth.ts`**
+- Interface `ApiKeyInfo` complète
+- Classe `ApiKeyAuth` avec méthodes:
+  - `validate(key, ip)` - Validation avec timing-safe comparison
+  - `generate(options)` - Génération crypto.secure (pk_live_/pk_test_)
+  - `revoke(keyId)` - Révocation immédiate
+  - `incrementUsage(keyId)` - Tracking utilisation
+  - `checkRateLimit(apiKey)` - Vérification quota
+  - `getUserKeys(userId)` - Liste clés utilisateur
+  - `getKeyById(keyId)` - Détails clé
+  - `getKeyStats(keyId, days)` - Statistiques détaillées
+- Helpers: `extractApiKeyFromHeaders()`, `extractIpAddress()`
+- Sécurité: bcrypt hashage, timing-safe comparison, anti-timing attacks
+
+### 3. Middleware Rate Limiting Avancé
+**`/src/lib/api/middleware/rate-limiter.ts`**
+- Sliding Window Algorithm implémenté
+- Configurations par endpoint:
+  - default: 1000/hour
+  - auth: 10/minute
+  - documents: 200/hour
+  - analyze: 50/hour
+  - statistics: 300/hour
+- Combined rate limiting (IP + API Key + Global)
+- HTTP Headers standards:
+  - X-RateLimit-Limit
+  - X-RateLimit-Remaining
+  - X-RateLimit-Reset
+  - Retry-After (429 responses)
+- Cleanup automatique entrées expirées
+- Helper functions: `addRateLimitHeaders()`, `createRateLimitResponse()`
+
+### 4. Formateur de Réponse Standardisé
+**`/src/lib/api/response/api-response.ts`**
+- Interface `ApiResponse<T>` générique
+- Structure réponse:
+  ```json
+  {
+    "success": true|false,
+    "data"?: T,
+    "error"?: { code, message, details? },
+    "meta": { requestId, timestamp, version, pagination?, rateLimit? }
+  }
+  ```
+- Error codes standardisés (ErrorCodes enum)
+- HTTP Status mapping automatique
+- Builders: `apiSuccess()`, `apiError()`, `apiPaginated()`, `apiCreated()`, `apiNotFound()`
+- Next.js helpers: `toNextResponse()`, `jsonSuccess()`, `jsonError()`, `jsonPaginated()`
+
+### 5. Validation Requêtes Zod
+**`/src/lib/api/validation/request-validator.ts`**
+- Schémas Zod pour tous endpoints:
+  - `listDocumentsSchema` - Pagination, filtres, tri
+  - `createDocumentSchema` - Création document
+  - `createAnalysisSchema` - Configuration analyse
+  - `listSubjectsSchema` - Liste sujets
+  - `validateSubjectSchema` - Validation sujet
+  - `statisticsOverviewSchema` / `statisticsTrendsSchema`
+  - `createApiKeySchema` - Création clé API
+- Sanitization XSS/injection:
+  - `sanitizeString()` - Nettoyage chaînes
+  - `escapeHtml()` - Échappement HTML
+  - `sanitizeObject()` - Récursif objets
+- Parsers: `parseQueryParams()`, `parseJsonBody()`
+
+### 6. Endpoints API v1 (10+ endpoints)
+
+#### a) Racine API `/api/v1/route.ts`
+- GET: Informations API (version, status, endpoints list)
+- CORS preflight OPTIONS
+
+#### b) Authentification `/api/v1/auth/route.ts`
+- POST /v1/auth: Valider clé API, retourner infos
+- GET /v1/auth: Vérifier statut auth courant
+
+#### c) Documents `/api/v1/documents/route.ts`
+- GET /v1/documents: Liste paginée, filtrable (status, type, faculté, search)
+- POST /v1/documents: Créer document (requiert permission write)
+
+#### d) Document Detail `/api/v1/documents/[id]/route.ts`
+- GET /v1/documents/{id}: Détails complets + analyses récentes
+
+#### e) Analyses `/api/v1/documents/[id]/analyze/route.ts`
+- POST /v1/documents/{id}/analyze: Lancer analyse (threshold, scope, engine)
+- GET /v1/documents/{id}/analyse: Liste analyses document
+
+#### f) Résultat Analyse `/api/v1/documents/[id]/analyze/[analysisId]/route.ts`
+- GET /v1/documents/{id}/analyze/{analysisId}: Résultat détaillé + matches
+
+#### g) Sujets `/api/v1/subjects/route.ts`
+- GET /v1/subjects: Liste sujets (paginé, filtrable)
+- POST /v1/subjects: Valider sujet (score validation)
+
+#### h) Statistiques Overview `/api/v1/statistics/route.ts`
+- GET /v1/statistics/overview: Stats globales (documents, analyses, users)
+
+#### i) Statistiques Trends `/api/v1/statistics/trends/route.ts`
+- GET /v1/statistics/trends: Données temporelles (day/week/month granularity)
+
+#### j) Statistiques Faculté `/api/v1/statistics/faculties/[id]/route.ts`
+- GET /v1/statistics/faculties/{id}: Stats détaillées par faculté
+
+#### k) Documentation `/api/v1/docs/route.ts`
+- GET /v1/docs: Spécification OpenAPI 3.0 complète (JSON)
+
+### 7. API Keys Management (Dashboard)
+**`/src/app/api/keys/route.ts`**
+- GET /api/keys: Liste clés utilisateur
+- POST /api/keys: Créer nouvelle clé
+
+**`/src/app/api/keys/[id]/route.ts`**
+- GET /api/keys/{id}/stats: Statistiques utilisation
+- DELETE /api/keys/{id}: Révoquer clé
+
+### 8. Composant ApiKeyCard
+**`/src/components/api/api-key-card.tsx`**
+- Affichage clé partiellement masquée
+- Bouton copier (clipboard API)
+- Badges permissions colorées
+- Stats inline (utilisation, limite, % utilisé)
+- Indicateurs expiration (expirée/bientôt)
+- Actions: Régénérer, Révoquer (avec confirmation AlertDialog)
+- Props: `apiKey`, `fullKey` (post-création), callbacks actions
+
+### 9. Page Dashboard Gestion Clés API
+**`/src/app/dashboard/api-keys/page.tsx`**
+- 3 onglets: Mes Clés | Documentation | Sandbox
+- Formulaire création clé:
+  - Nom, Permissions (checkboxes), Rate Limit (select)
+  - IP Whitelist, Expiration, Mode Test
+- Grille ApiKeyCards responsive
+- Affichage clé nouvelle (une seule fois, warning sauvegarde)
+- Documentation intégrée:
+  - Endpoint docs
+  - Résumé authentification/rate limiting
+  - Liste endpoints avec badges méthode HTTP
+- Sandbox de test:
+  - Exemple curl
+  - Tester authentification
+  - Télécharger collection Postman (OpenAPI)
+  - Panneau statistiques clé sélectionnée
+
+---
+
+## Technologies Utilisées
+
+- **Framework**: Next.js 16 App Router
+- **Langage**: TypeScript 5 strict
+- **ORM**: Prisma (SQLite)
+- **Sécurité**: bcryptjs, crypto (Node.js built-in)
+- **Validation**: Zod v4
+- **UI**: shadcn/ui + Tailwind CSS 4
+- **Icons**: Lucide React
+- **API Format**: REST + OpenAPI 3.0
+
+---
+
+## Sécurité Implémentée
+
+1. **Authentification**:
+   - Clés format pk_live_xxx / pk_test_xxx
+   - Hashage bcrypt (12 rounds)
+   - Timing-safe comparison (anti timing attacks)
+   - Validation IP whitelist optionnelle
+
+2. **Rate Limiting**:
+   - Sliding window algorithm
+   - Limites par endpoint et par clé
+   - Headers HTTP standards (X-RateLimit-*)
+   - Response 429 avec Retry-After
+
+3. **Validation**:
+   - Schémas Zod stricts
+   - Sanitization inputs (XSS, injection)
+   - Type coercion automatique
+   - Erreurs structurées
+
+4. **Logging**:
+   - Toutes les requêtes loggées (ApiAccessLog)
+   - Request ID unique traçabilité
+   - Métriques performance (response time)
+
+5. **CORS**:
+   - Configuration restrictive
+   - Origins autorisées configurables
+   - Preflight OPTIONS support
+
+---
+
+## Tests & Validation
+
+- ✅ ESLint pass sans erreurs dans fichiers API
+- ✅ Schema Prisma pushé avec succès
+- ✅ Types TypeScript valides
+- ✅ Imports corrects
+- ✅ Compatibilité codebase existante
+
+---
+
+## Notes d'Implémentation
+
+1. **Performance**: In-memory store pour rate limiting (pour production: utiliser Redis)
+2. **Sécurité**: Clés API jamais retournées après création (afficher une seule fois)
+3. **Extensibilité**: Architecture modulaire facile ajouter nouveaux endpoints
+4. **i18n**: Messages erreurs en français (cohérent projet UNIKIN)
+5. **Documentation**: OpenAPI 3.0 compatible Swagger/Postman
+
+---
+
+## Prochaines Améliorations Possibles
+
+- [ ] Migration rate limiting vers Redis (multi-instance)
+- [ ] Webhook notifications événements API
+- [ ] Clés JWT temporaires (auth déléguée)
+- [ ] Analytics dashboard temps réel
+- [ ] SDK clients (Python, PHP, JavaScript)
+- [ ] GraphQL gateway (alternative REST)
+- [ ] API versioning automation (v2 migration)

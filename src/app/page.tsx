@@ -9,9 +9,11 @@ import { Label } from '@/components/ui/label';
 import { ShieldCheck, Loader2, GraduationCap, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from 'next/link';
+import { LanguageSwitcher, useTranslation } from '@/components/ui/language-switcher';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { t } = useTranslation();
   const [email, setEmail] = useState('admin@unikin.ac.cd');
   const [password, setPassword] = useState('admin123');
   const [loading, setLoading] = useState(false);
@@ -38,13 +40,13 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data.error || 'Erreur de connexion');
+        toast.error(data.error || t('errors.generic'));
         return;
       }
-      toast.success(`Bienvenue, ${data.user.firstName} ${data.user.lastName} !`);
+      toast.success(t('auth.welcome', { name: `${data.user.firstName} ${data.user.lastName}` }));
       router.replace('/dashboard');
     } catch (err: any) {
-      toast.error('Erreur réseau : ' + err.message);
+      toast.error(`${t('errors.networkError')}: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -72,16 +74,24 @@ export default function LoginPage() {
               <ShieldCheck className="h-7 w-7 text-emerald-300" />
             </div>
             <div>
-              <div className="text-xl font-bold tracking-tight">PlagiatIA</div>
+              <div className="text-xl font-bold tracking-tight">{t('common.appName')}</div>
               <div className="text-xs text-emerald-200/80">Plateforme anti-plagiat IA</div>
             </div>
+          </div>
+
+          {/* Language Switcher - Light variant for dark background */}
+          <div className="mb-6">
+            <LanguageSwitcher 
+              variant="compact" 
+              className="bg-white/10 border-white/20"
+            />
           </div>
 
           <h1 className="text-3xl lg:text-5xl font-bold leading-tight mb-6">
             Détection automatique du plagiat par Intelligence Artificielle
           </h1>
           <p className="text-emerald-100/90 text-base lg:text-lg leading-relaxed max-w-lg">
-            Plateforme universitaire intelligente pour la gestion et l'analyse des travaux académiques.
+            Plateforme universitaire intelligente pour la gestion et l&apos;analyse des travaux académiques.
             Cas pilote : Faculté des Sciences — Université de Kinshasa.
           </p>
         </div>
@@ -103,7 +113,12 @@ export default function LoginPage() {
       </div>
 
       {/* Panneau droit — Formulaire */}
-      <div className="lg:w-1/2 flex items-center justify-center p-6 lg:p-16 bg-slate-50">
+      <div className="lg:w-1/2 flex items-center justify-center p-6 lg:p-16 bg-slate-50 relative">
+        {/* Language Switcher - Top right corner */}
+        <div className="absolute top-4 right-4">
+          <LanguageSwitcher variant="toggle" size="sm" />
+        </div>
+
         <Card className="w-full max-w-md shadow-xl border-slate-200">
           <CardHeader className="space-y-1">
             <div className="flex items-center justify-center mb-4">
@@ -111,15 +126,15 @@ export default function LoginPage() {
                 <GraduationCap className="h-8 w-8 text-white" />
               </div>
             </div>
-            <CardTitle className="text-2xl text-center">Connexion</CardTitle>
+            <CardTitle className="text-2xl text-center">{t('auth.loginTitle')}</CardTitle>
             <CardDescription className="text-center">
-              Accédez à votre espace PlagiatIA
+              {t('auth.loginSubtitle')}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">Adresse email</Label>
+                <Label htmlFor="email">{t('auth.email')}</Label>
                 <Input
                   id="email"
                   type="email"
@@ -132,7 +147,7 @@ export default function LoginPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password">Mot de passe</Label>
+                <Label htmlFor="password">{t('auth.password')}</Label>
                 <Input
                   id="password"
                   type="password"
@@ -151,10 +166,10 @@ export default function LoginPage() {
                 {loading ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Connexion...
+                    {t('auth.loggingIn')}
                   </>
                 ) : (
-                  'Se connecter'
+                  t('auth.signIn')
                 )}
               </Button>
             </form>
@@ -164,13 +179,13 @@ export default function LoginPage() {
               <div className="text-xs text-amber-800">
                 <div className="font-semibold mb-1">Compte super-admin par défaut :</div>
                 <div>Email : <code className="bg-amber-100 px-1 rounded">admin@unikin.ac.cd</code></div>
-                <div>Mot de passe : <code className="bg-amber-100 px-1 rounded">admin123</code></div>
+                <div>{t('auth.password')} : <code className="bg-amber-100 px-1 rounded">admin123</code></div>
               </div>
             </div>
 
             <div className="mt-6 text-center text-xs text-slate-500">
               <Link href="#" className="hover:text-emerald-700 transition">
-                Mot de passe oublié ?
+                {t('auth.forgotPassword')}
               </Link>
             </div>
           </CardContent>
