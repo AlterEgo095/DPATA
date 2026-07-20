@@ -231,7 +231,7 @@ export const errors = {
 // EXPORTS
 // ============================================================================
 
-export default {
+const responseHelpers = {
   optimizedResponse,
   createStreamResponse,
   createOptimizedPaginatedResponse,
@@ -239,3 +239,5 @@ export default {
   createErrorResponse,
   errors,
 };
+
+export default responseHelpers;

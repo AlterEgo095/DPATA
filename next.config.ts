@@ -9,7 +9,7 @@ const nextConfig: NextConfig = {
   },
   
   // React strict mode for development
-  reactStrictMode: false,
+  reactStrictMode: true,
   
   // Allowed origins
   allowedDevOrigins: ["21.0.22.52", "localhost", "127.0.0.1"],
@@ -17,7 +17,7 @@ const nextConfig: NextConfig = {
   // No external packages needed at server level
   serverExternalPackages: [],
   
-  // Image optimization - PHASE 5: Enhanced for CDN/Performance
+  // Image optimization - Enhanced for CDN/Performance
   images: {
     formats: ['image/avif', 'image/webp'],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048],
@@ -33,7 +33,7 @@ const nextConfig: NextConfig = {
     minimumCacheTTL: 60,
   },
   
-  // Headers for security and caching - PHASE 5: Enhanced
+  // Headers for security and caching - Enhanced
   async headers() {
     return [
       {
@@ -60,14 +60,14 @@ const nextConfig: NextConfig = {
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'X-Frame-Options', value: 'DENY' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-          // PHASE 5: Additional security & performance headers
+          // Additional security & performance headers
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
           { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
           // Remove X-Powered-By header (security)
           { key: 'X-Powered-By', value: '' },
         ],
       },
-      // PHASE 5: Font optimization headers
+      // Font optimization headers
       {
         source: '/fonts/:path*',
         headers: [
@@ -78,7 +78,7 @@ const nextConfig: NextConfig = {
     ];
   },
   
-  // PHASE 5: Webpack optimizations for bundle size
+  // Webpack optimizations for bundle size (fallback for webpack mode)
   webpack: (config, { isServer }) => {
     // Optimize bundle size
     if (!isServer) {
@@ -112,24 +112,16 @@ const nextConfig: NextConfig = {
     return config;
   },
   
-  // Experimental features - PHASE 5: Performance focused
+  // Turbopack configuration (Next.js 16 default)
+  turbopack: {},
+  
+  // Experimental features - Only valid keys for Next.js 16
   experimental: {
     optimizeCss: true,
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
-    // PHASE 5: Enable React compiler for better performance
-    reactCompiler: false, // Can be enabled when stable
-    // Enable turbo logging for faster builds
-    turbo: {
-      rules: {
-        '*.svg': {
-          loaders: ['@svgr/webpack'],
-          as: '*.js',
-        },
-      },
-    },
   },
   
-  // PHASE 5: Power-by header removal
+  // Power-by header removal
   poweredByHeader: false,
 };
 

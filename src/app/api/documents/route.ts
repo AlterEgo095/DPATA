@@ -85,21 +85,23 @@ export async function GET(req: NextRequest) {
 
     // Enrich with related data AFTER pagination to avoid overhead
     const paginatedDocs = docs.slice(pagination.offset, pagination.offset + pagination.limit);
-    const enriched = paginatedDocs.map(d => ({
-      ...d,
-      uploadedBy: db.users.find(u => u.id === d.uploadedById)
-        ? { id: u.id, firstName: u.firstName, lastName: u.lastName, email: u.email }
-          .bind({ id: d.uploadedById })()
-        : null,
-      supervisedBy: db.users.find(u => u.id === d.supervisedById)
-        ? { id: u.id, firstName: u.firstName, lastName: u.lastName }
-          .bind({ id: d.supervisedById })()
-        : null,
+    const enriched = paginatedDocs.map(d => {
+      const uploader = db.users.find(u => u.id === d.uploadedById);
+      const supervisor = db.users.find(u => u.id === d.supervisedById);
+      return {
+        ...d,
+        uploadedBy: uploader
+          ? { id: uploader.id, firstName: uploader.firstName, lastName: uploader.lastName, email: uploader.email }
+          : null,
+        supervisedBy: supervisor
+          ? { id: supervisor.id, firstName: supervisor.firstName, lastName: supervisor.lastName }
+          : null,
       faculty: db.faculties.find(f => f.id === d.facultyId)?.name || null,
       department: db.departments.find(dep => dep.id === d.departmentId)?.name || null,
       promotion: db.promotions.find(p => p.id === d.promotionId)?.name || null,
       hasAnalysis: db.analyses.some(a => a.documentId === d.id),
-    }));
+      };
+    });
 
     return NextResponse.json({
       data: enriched,

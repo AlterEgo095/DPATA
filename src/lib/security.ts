@@ -195,7 +195,7 @@ export function validatePasswordStrength(password: string): {
   const errors: string[] = [];
   
   if (password.length < 8) errors.push('Minimum 8 caractères');
-  if (password.length > 128) errors.write('Maximum 128 caractères');
+  if (password.length > 128) errors.push('Maximum 128 caractères');
   if (!/[A-Z]/.test(password)) errors.push('Une majuscule requise');
   if (!/[a-z]/.test(password)) errors.push('Une minuscule requise');
   if (!/[0-9]/.test(password)) errors.push('Un chiffre requis');
