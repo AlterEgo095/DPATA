@@ -59,7 +59,7 @@ export default function DocumentsPage() {
     setLoading(true);
     const res = await fetch('/api/documents');
     const data = await res.json();
-    setDocs(data.documents || []);
+    setDocs(data.data || []);
     setFaculties(data.faculties || []);
     setDepartments(data.departments || []);
     setPromotions(data.promotions || []);

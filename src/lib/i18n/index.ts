@@ -4,7 +4,7 @@
  * Compatible Client ET Server
  */
 
-import { Locale, defaultLocale, cookieName, sanitizeLocale, locales } from './config';
+import { Locale, defaultLocale, sanitizeLocale, locales } from './config';
 import frDictionary from './dictionaries/fr.json';
 import enDictionary from './dictionaries/en.json';
 import swDictionary from './dictionaries/sw.json';
@@ -20,19 +20,11 @@ const dictionaries: Record<Locale, Dictionary> = {
 };
 
 /**
- * Obtient le locale depuis les cookies (côté serveur uniquement)
- * NOTE: Cette fonction doit être importée dynamiquement ou utilisée seulement dans Server Components
+ * Obtient le dictionnaire pour un locale donné
+ * Compatible côté client et serveur
  */
-export async function getLocaleFromCookie(): Promise<Locale> {
-  // Import dynamique pour éviter l'erreur côté client
-  try {
-    const { cookies } = await import('next/headers');
-    const cookieStore = await cookies();
-    const cookieLocale = cookieStore.get(cookieName)?.value;
-    return sanitizeLocale(cookieLocale);
-  } catch {
-    return defaultLocale;
-  }
+export function getDictionary(locale: Locale = defaultLocale): Dictionary {
+  return dictionaries[locale] || dictionaries[defaultLocale];
 }
 
 /**
@@ -44,13 +36,6 @@ export function getLocale(locale?: string): Locale {
     return sanitizeLocale(locale);
   }
   return defaultLocale;
-}
-
-/**
- * Obtient le dictionnaire pour un locale donné
- */
-export function getDictionary(locale: Locale = defaultLocale): Dictionary {
-  return dictionaries[locale] || dictionaries[defaultLocale];
 }
 
 /**
