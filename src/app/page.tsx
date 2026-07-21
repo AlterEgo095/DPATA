@@ -20,13 +20,27 @@ export default function LoginPage() {
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   useEffect(() => {
-    fetch('/api/auth/me').then(r => r.json()).then(data => {
-      if (data?.user) {
-        router.replace('/dashboard');
-      } else {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
+    
+    fetch('/api/auth/me', { signal: controller.signal })
+      .then(r => r.json())
+      .then(data => {
+        if (data?.user) {
+          router.replace('/dashboard');
+        } else {
+          setCheckingAuth(false);
+        }
+      })
+      .catch(err => {
+        console.error('Auth check failed:', err);
         setCheckingAuth(false);
-      }
-    }).catch(() => setCheckingAuth(false));
+      });
+    
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
   }, [router]);
 
   async function handleSubmit(e: React.FormEvent) {
