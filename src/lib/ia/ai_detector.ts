@@ -136,7 +136,12 @@ function computePerplexityProxy(text: string): number {
   const logLikelihoods: number[] = [];
   for (const [w1, w2] of bigrams) {
     const key = `${w1} ${w2}`;
-    const pW2GivenW1 = (bigramCounts.get(key) || 0 + 1) / ((unigramCounts.get(w1) || 0) + unigramCounts.size);
+    // 🔒 BUG FIX: Ajout de parenthèses pour corriger la priorité des opérateurs
+    // Avant: (bigramCounts.get(key) || 0 + 1) → évalué comme (bigramCounts.get(key) || (0+1)) → toujours 1 si undefined
+    // Après: ((bigramCounts.get(key) || 0) + 1) → correct: ajoute 1 au count ou utilise 0+1=1
+    const bigramCount = (bigramCounts.get(key) || 0);
+    const unigramCount = (unigramCounts.get(w1) || 0);
+    const pW2GivenW1 = (bigramCount + 1) / (unigramCount + unigramCounts.size);
     logLikelihoods.push(-Math.log(pW2GivenW1));
   }
 

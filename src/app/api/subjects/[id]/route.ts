@@ -91,7 +91,9 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     const sanitizedData = sanitizeObject(parsed.data);
     
     const db = await loadDB();
-    const subjectIndex = (db.academicSubjects || []).findIndex(s => s.id === id);
+    // 🔒 SÉCURITÉ: Sanitize l'ID pour prévenir l'injection
+    const sanitizedId = sanitizeInput(id);
+    const subjectIndex = (db.academicSubjects || []).findIndex(s => s.id === sanitizedId);
     
     if (subjectIndex === -1) {
       return NextResponse.json(
@@ -139,8 +141,11 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     }
 
     const { id } = await params;
+    
+    // 🔒 SÉCURITÉ: Sanitize l'ID pour prévenir l'injection
+    const sanitizedId = sanitizeInput(id);
     const db = await loadDB();
-    const subject = (db.academicSubjects || []).find(s => s.id === id);
+    const subject = (db.academicSubjects || []).find(s => s.id === sanitizedId);
     
     if (!subject) {
       return NextResponse.json(
@@ -149,7 +154,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
       );
     }
 
-    db.academicSubjects = (db.academicSubjects || []).filter(s => s.id !== id);
+    db.academicSubjects = (db.academicSubjects || []).filter(s => s.id !== sanitizedId);
     await saveDB(db);
     
     await audit(
