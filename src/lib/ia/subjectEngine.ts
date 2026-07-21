@@ -204,7 +204,7 @@ export function validateSubject(
 }
 
 // Mission 2 : Générer des sujets alternatifs
-function generateAlternatives(
+export function generateAlternatives(
   submitted: SubjectInput,
   similarSubjects: SimilarSubject[]
 ): string[] {
