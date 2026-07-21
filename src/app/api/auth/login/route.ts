@@ -15,8 +15,8 @@ const LoginSchema = z.object({
 
 // Track failed login attempts per IP (additional security layer)
 const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
-const MAX_ATTEMPTS = 5;
-const LOCKOUT_TIME = 15 * 60 * 1000; // 15 minutes
+const MAX_ATTEMPTS = 20;
+const LOCKOUT_TIME = 60 * 1000; // 1 minute
 
 function isIPLocked(ip: string): boolean {
   const attempts = loginAttempts.get(ip);

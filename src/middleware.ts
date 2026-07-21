@@ -141,11 +141,11 @@ export async function middleware(request: NextRequest) {
                 request.headers.get('x-real-ip') || 
                 'unknown';
 
-    // Auth routes ont des limites plus strictes (5 requêtes / 15 min)
+    // Auth routes ont des limites modérées (60 requêtes / min)
     if (pathname.startsWith('/api/auth/')) {
-      if (!checkRateLimit(`auth:${ip}`, 5, 900000)) {
+      if (!checkRateLimit(`auth:${ip}`, 60, 60000)) {
         return NextResponse.json(
-          { error: 'Trop de tentatives. Réessayez dans 15 minutes.' },
+          { error: 'Trop de tentatives. Réessayez dans 1 minute.' },
           { status: 429 }
         );
       }
