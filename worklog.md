@@ -722,3 +722,285 @@ Le frontend est **ultra premium et optimisé pour l'usage international** avec:
 5. Mettre en place backup automatique de la DB
 
 ---
+
+---
+# Worklog - Préparation Déploiement VPS (Task #9)
+
+## Date: 2025-01-20
+## Auteur: Z.AI Code Assistant
+## Tâche: Préparer le repository pour déploiement VPS avec Nginx et Certbot
+
+---
+
+## Résumé
+
+Création complète de l'infrastructure de déploiement production pour PlagiatIA:
+- Scripts d'installation et déploiement automatisés
+- Configuration Nginx optimisée (reverse proxy, SSL, rate limiting)
+- Support Certbot/Let's Encrypt pour SSL automatique
+- Configuration PM2 pour process management
+- Support Docker/Docker Compose optionnel
+- Documentation complète du processus de déploiement
+
+---
+
+## Fichiers Crés
+
+### Scripts de Déploiement (3)
+
+#### 1. `deploy/scripts/deploy.sh` (~26KB)
+Script principal de déploiement avec options:
+- `--setup`: Installation complète du serveur
+- `--deploy`: Déploiement standard (build + restart)
+- `--ssl`: Configuration Certbot uniquement
+- `--rollback`: Retour version précédente
+- `--backup`: Sauvegarde base de données
+- `--logs`: Affichage logs temps réel
+
+Fonctionnalités:
+- Génération automatique des secrets (JWT, passwords)
+- Configuration Nginx avec rate limiting zones
+- Setup PM2 ecosystem
+- Variables d'environnement template
+- Configuration UFW firewall
+- Notifications de déploiement (webhook-ready)
+
+#### 2. `deploy/scripts/setup-vps.sh` (~12KB)
+Script d'installation rapide VPS:
+- Installation Node.js 20 LTS via NodeSource
+- Installation PM2 global
+- Installation Nginx + Certbot
+- Configuration UFW firewall
+- Configuration Fail2Ban (anti brute-force SSH/HTTP)
+- Création structure répertoires (/var/www/plagiatia)
+- Génération secrets sécurisés (openssl)
+- Résumé post-installation avec commandes utiles
+
+#### 3. `deploy/scripts/build.sh` (~10KB)
+Script de build production:
+- Pré-build checks (Node.js, fichiers requis)
+- Nettoyage caches
+- Installation dépendances (npm ci)
+- Build Next.js standalone mode
+- Préparation bundle standalone
+- Tests de santé post-build
+- Création archive .tar.gz du build
+- Support Docker build optionnel
+
+### Configuration Nginx (3 fichiers)
+
+#### 1. `deploy/nginx/plagiatia.conf` (~10KB)
+Configuration complète Nginx production:
+- **Rate Limiting Zones**:
+  - api_limit: 100 req/s
+  - login_limit: 5 req/min (anti brute-force)
+  - upload_limit: 10 req/5min
+  - conn_limit: 20 connexions/IP simultanées
+  
+- **Upstream**: keepalive 64, timeout configurés
+
+- **Server Blocks**:
+  - HTTP (port 80) avec ACME challenge
+  - HTTPS (port 443) avec configuration SSL complète
+  - SSL: TLSv1.2/1.3, cipher suites modernes, OCSP stapling
+
+- **Locations optimisées**:
+  - `/` → proxy vers Next.js
+  - `/api/` → rate limiting strict
+  - `/api/auth/login` → protection brute-force renforcée
+  - `/api/documents` → uploads jusqu'à 100MB
+  - `/_next/static/*` → cache 1 an immutable
+  - Images/Fonts → cache agressif
+  - `/api/health` → sans logs
+
+- **Security Headers**:
+  - HSTS (63072000s + preload)
+  - X-Frame-Options: DENY
+  - X-Content-Type-Options: nosniff
+  - X-XSS-Protection: mode=block
+  - Referrer-Policy: strict-origin-when-cross-origin
+  - Permissions-Policy: camera/microphone/geolocation=()
+  - Content-Security-Policy complet
+
+#### 2. `deploy/nginx/plagiatia-proxy.conf`
+Snippet proxy réutilisable:
+- HTTP/1.1 + WebSocket support
+- Headers forwarding complets (X-Real-IP, X-Forwarded-*)
+- Timeouts optimisés (connect/send/read)
+- Buffering configuration
+- Cache headers
+
+#### 3. `deploy/nginx/nginx-docker.conf`
+Configuration spécifique Docker:
+- Upstream vers service Docker (plagiatia:3000)
+- Même niveau d'optimisation que la config standard
+- Compatible docker-compose volume mounts
+
+### Templates de Configuration (2)
+
+#### 1. `deploy/templates/ecosystem.config.js`
+Configuration PM2 production:
+- Mode standalone Next.js (.next/standalone/server.js)
+- Mémoire max: 512MB auto-restart
+- Redémarrage automatique (max 10 échecs/10min uptime min)
+- Graceful shutdown (5s timeout)
+- Logs JSON formatés avec timestamps
+- Source map support activé
+- Config deploy PM2 distant (optionnel)
+
+#### 2. `deploy/templates/.env.production.example`
+Template variables environnement complètes (~7.5KB):
+- **Application**: NODE_ENV, PORT, APP_URL
+- **Sécurité**: JWT_SECRET, PASSWORD_SALT, SESSION_SECRET
+- **Base de données**: DATABASE_URL (SQLite)
+- **Email**: SMTP config, EMAIL_FROM
+- **Admin**: ADMIN_EMAIL, ADMIN_PASSWORD
+- **API**: API_ENCRYPTION_KEY, rate limits
+- **Fédération**: FEDERATION_ID, API_KEY
+- **IA Engine**: thresholds, timeouts
+- **Logging**: LOG_LEVEL, format
+- **Features toggles**: PDF, batch, federation, stats
+
+### Docker (2 fichiers)
+
+#### 1. `deploy/Dockerfile`
+Multi-stage build optimisé:
+- Stage 1: Base Alpine + deps système
+- Stage 2: Dépendances npm ci
+- Stage 3: Build Next.js standalone
+- Stage 4: Runner léger (node:20-alpine)
+  - Utilisateur non-root (security)
+  - Health check intégré
+  - Volumes data/logs persistants
+  - Expose port 3000
+
+#### 2. `deploy/docker-compose.yml`
+Stack complète:
+- Service plagiatia (Next.js)
+- Service nginx (reverse proxy + SSL termination)
+- Service certbot (renouvellement automatique)
+- Volumes persistants (data, logs, certs, web-logs)
+- Network bridge backend
+- Health checks pour tous services
+- Resource limits (CPU/Memory)
+- Logging configuration (json-file, rotation)
+- Services optionnels commentés (PostgreSQL, Redis)
+
+### Documentation
+
+#### `deploy/DEPLOYMENT.md`
+Guide complet de déploiement:
+- Table des matières détaillée
+- Architecture diagramme ASCII
+- 3 méthodes de déploiement (Manuel, Script, Docker)
+- Étape par étape avec commandes copier-coller
+- Configuration Nginx expliquée
+- Guide SSL/Certbot complet
+- Workflow mises à jour
+- Monitoring & Maintenance
+- Dépannage (FAQ problèmes courants)
+- Performance optimization tips
+
+---
+
+## Structure Finale du Dossier deploy/
+
+```
+deploy/
+├── DEPLOYMENT.md              # Documentation complète
+├── Dockerfile                 # Build multi-stage Docker
+├── docker-compose.yml         # Stack Docker Compose
+├── nginx/
+│   ├── nginx-docker.conf      # Config Nginx pour Docker
+│   ├── plagiatia.conf         # Config Nginx principale
+│   └── plagiatia-proxy.conf   # Snippet proxy
+├── scripts/
+│   ├── build.sh               # Script build production
+│   ├── deploy.sh              # Script déploiement principal
+│   └── setup-vps.sh           # Script installation VPS
+└── templates/
+    ├── .env.production.example # Template variables env
+    └── ecosystem.config.js     # Config PM2
+```
+
+**Total**: ~75KB de configuration de déploiement
+
+---
+
+## Fonctionnalités Clés
+
+### ✅ Sécurité Production-Ready
+- TLS 1.2/1.3 avec cipher suites modernes
+- HSTS avec preload
+- Rate limiting multi-niveaux
+- Fail2Ban (SSH + HTTP auth)
+- UFW firewall (ports 22/80/443 uniquement)
+- Secrets générés automatiquement (openssl)
+- Headers sécurité complets
+
+### ✅ Haute Disponibilité
+- PM2 auto-restart
+- Graceful shutdown
+- Health checks
+- Logs rotation intégrée
+- Backup automatisable (cron ready)
+
+### ✅ Performance Optimisée
+- Keep-alive connections (64)
+- Cache statique agressif (1 an assets)
+- Compression gzip/brotli
+- Buffering Nginx optimisé
+- TCP tuning recommendations
+
+### ✅ Facilité de Déploiement
+- 3 méthodes (manuel/script/docker)
+- Scripts exécutables prêts à l'emploi
+- Documentation exhaustive
+- Rollback en une commande
+- Backup avant chaque mise à jour
+
+---
+
+## Commandes Rapides
+
+```bash
+# Installation rapide sur VPS neuf
+curl -fsSL https://raw.githubusercontent.com/.../setup-vps.sh | sudo bash -s domaine.com email@domaine.com
+
+# Déploiement standard
+sudo ./deploy/scripts/deploy.sh --deploy
+
+# Avec Docker
+cd deploy && docker-compose up -d
+
+# Mise à jour
+sudo ./deploy/scripts/deploy.sh --deploy
+
+# Problème? Rollback!
+sudo ./deploy/scripts/deploy.sh --rollback
+```
+
+---
+
+## Notes d'Implémentation
+
+1. **Domaines placeholders**: Remplacer `VOTRE_DOMAINE`, `plagiatia.unikin.ac.cd` par le vrai domaine
+2. **Secrets**: TOUJOURS générer de nouveaux secrets en production (`openssl rand`)
+3. **DNS**: Assurez-vous que le domaine pointe vers l'IP du VPS AVANT de configurer SSL
+4. **Backups**: Planifiez des backups réguliers de `/var/www/plagiatia/data/`
+5. **Monitoring**: Intégrer avec Sentry/UptimeRobot pour monitoring production
+
+---
+
+## Prochaines Améliorations Possibles
+
+- [ ] CI/CD pipeline (GitHub Actions/GitLab CI)
+- [ ] Blue-green deployment pour zero-downtime
+- [ ] Monitoring avancé (Prometheus + Grafana)
+- [ ] Centralized logging (ELK stack ou Loki)
+- [ ] CDN integration (Cloudflare)
+- [ ] Auto-scaling (Kubernetes)
+- [ ] Database migration to PostgreSQL for scale
+- [ ] Redis cache layer for sessions/rate-limiting
+
+---

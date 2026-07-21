@@ -1,0 +1,170 @@
+# PlagiatIA - Docker Compose Configuration
+# Université de Kinshasa (UNIKIN)
+#
+# Usage:
+#   docker-compose up -d              # Démarrer tous les services
+#   docker-compose logs -f plagiatia  # Voir les logs
+#   docker-compose down               # Arrêter tout
+#   docker-compose restart plagiatia  # Redémarrer l'app
+#
+# Variables d'environnement:
+#   Copiez .env.production.example vers .env et configurez-le
+
+version: '3.8'
+
+services:
+ #=============================================================================
+  # Application PlagiatIA (Next.js)
+  #=============================================================================
+  plagiatia:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: runner
+    container_name: ${APP_NAME:-plagiatia}
+    restart: unless-stopped
+    env_file:
+      - ../.env.production
+    environment:
+      - NODE_ENV=production
+      - PORT=${PORT:-3000}
+      - HOSTNAME=0.0.0.0
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      # Persistance des données SQLite
+      - app-data:/app/data
+      # Persistance des logs
+      - app-logs:/app/logs
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+        reservations:
+          memory: 256M
+          cpus: '0.5'
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  #=============================================================================
+  # Nginx (Reverse Proxy + SSL termination)
+  #=============================================================================
+  nginx:
+    image: nginx:alpine
+    container_name: ${APP_NAME:-plagiatia}-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/plagiatia.conf:/etc/nginx/conf.d/plagiatia.conf:ro
+      - ./nginx/plagiatia-proxy.conf:/etc/nginx/snippets/plagiatia-proxy.conf:ro
+      - certbot-etc:/etc/letsencrypt:ro
+      - certbot-www:/var/www/certbot:ro
+      - web-logs:/var/log/nginx
+    depends_on:
+      - plagiatia
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "-q", "http://localhost:80/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  #=============================================================================
+  # Certbot (Renouvellement automatique SSL)
+  #=============================================================================
+  certbot:
+    image: certbot/certbot
+    container_name: ${APP_NAME:-plagiatia}-certbot
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    # Le certificat est obtenu manuellement la première fois:
+    # docker run --rm -it -v certbot-etc:/etc/letsencrypt -v certbot-www:/var/www/certbot certbot/certbot certonly --webroot --webroot-path=/var/www/certbot --email your@email.com --agree-tos --no-eff-email -d your-domain.com -d www.your-domain.com
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+    depends_on:
+      - nginx
+
+  #=============================================================================
+  # Optionnel: PostgreSQL (si migration depuis SQLite)
+  #=============================================================================
+  # postgres:
+  #   image: postgres:16-alpine
+  #   container_name: ${APP_NAME:-plagiatia}-db
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_USER: ${DB_USER:-plagiatia}
+  #     POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+  #     POSTGRES_DB: ${DB_NAME:-plagiatia}
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+  #   networks:
+  #     - backend
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-plagiatia}"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+  #=============================================================================
+  # Optionnel: Redis (pour le cache et sessions en production)
+  #=============================================================================
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: ${APP_NAME:-plagiatia}-redis
+  #   restart: unless-stopped
+  #   command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+  #   volumes:
+  #     - redis-data:/data
+  #   ports:
+  #     - "6379:6379"
+  #   networks:
+  #     - backend
+  #   healthcheck:
+  #     test: ["CMD", "redis-cli", "ping"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+#=============================================================================
+# VOLUMES PERSISTANTS
+#=============================================================================
+volumes:
+  app-data:
+    driver: local
+  app-logs:
+    driver: local
+  certbot-etc:
+    driver: local
+  certbot-www:
+    driver: local
+  web-logs:
+    driver: local
+  # postgres-data:
+  #   driver: local
+  # redis-data:
+  #   driver: local
+
+#=============================================================================
+# RÉSEAUX
+#=============================================================================
+networks:
+  backend:
+    driver: bridge
