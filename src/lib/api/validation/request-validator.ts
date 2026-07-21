@@ -231,7 +231,10 @@ export const createApiKeySchema = z.object({
   name: z.string().min(2, 'Le nom doit contenir au moins 2 caractères.').max(100),
   permissions: z.array(z.enum(['read', 'write', 'admin'])).default(['read']),
   rateLimit: z.number().int().min(10).max(10000).optional().default(1000),
-  ipAddressWhitelist: z.array(z.string().ip()).optional(),
+  ipAddressWhitelist: z.array(z.string().refine(
+    (val) => /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$|^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/.test(val),
+    { message: 'Adresse IP invalide' }
+  )).optional(),
   expiresAt: z.coerce.date().optional(),
   isTest: z.boolean().optional().default(false),
 });
