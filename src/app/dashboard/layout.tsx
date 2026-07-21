@@ -205,7 +205,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   useEffect(() => {
-    fetch('/api/auth/me')
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
+    
+    fetch('/api/auth/me', { signal: controller.signal })
       .then(r => r.json())
       .then(data => {
         if (!data?.user) {
@@ -215,10 +218,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }
         setLoading(false);
       })
-      .catch(() => {
+      .catch(err => {
+        console.error('Auth check failed:', err);
         router.replace('/');
         setLoading(false);
       });
+    
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
   }, [router]);
 
   if (loading) {

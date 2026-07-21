@@ -43,10 +43,22 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/dashboard/stats')
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
+    
+    fetch('/api/dashboard/stats', { signal: controller.signal })
       .then(r => r.json())
       .then(data => setStats(data))
+      .catch(err => {
+        console.error('Failed to load dashboard stats:', err);
+        setStats(null);
+      })
       .finally(() => setLoading(false));
+    
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
   }, []);
 
   if (loading) {
