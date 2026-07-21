@@ -1,0 +1,13 @@
+[Unit]
+Description=PlagiatIA Watchdog Timer - Vérifie la santé de l'application toutes les 2 minutes
+
+[Timer]
+# Démarrer 2 minutes après le boot
+OnBootSec=2min
+# Répéter toutes les 2 minutes
+OnUnitActiveSec=2min
+# Jitter aléatoire (±30s) pour éviter que tous les serveurs vérifient en même temps
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,19 @@
+[Unit]
+Description=PlagiatIA Health Watchdog
+After=network.target pm2-plagiatia.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/local/bin/plagiatia-watchdog.sh
+Restart=no
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+PrivateTmp=true
+ProtectSystem=true
+ReadOnlyPaths=/var/www/plagiatia
+
+[Install]
+WantedBy=multi-user.target
