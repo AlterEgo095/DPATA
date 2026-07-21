@@ -1,7 +1,9 @@
 // GET /api/users/[id] + PUT + DELETE
+// 🔒 SÉCURITÉ: Les mots de passe sont hashés avec bcrypt avant stockage
 import { NextRequest, NextResponse } from 'next/server';
 import { loadDB, saveDB, now, audit } from '@/lib/store/db';
 import { getCurrentUser } from '@/lib/auth/jwt';
+import { hashPassword } from '@/lib/security';
 import { z } from 'zod';
 
 const UpdateSchema = z.object({
@@ -18,13 +20,19 @@ const UpdateSchema = z.object({
 });
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
-  const { id } = await params;
-  const db = await loadDB();
-  const u = db.users.find(x => x.id === id);
-  if (!u) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 });
-  return NextResponse.json({ user: { ...u, passwordHash: undefined } });
+  try {
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+    const { id } = await params;
+    const db = await loadDB();
+    const u = db.users.find(x => x.id === id);
+    if (!u) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 });
+    return NextResponse.json({ user: { ...u, passwordHash: undefined } });
+  } catch (e) {
+    const { sanitizeError, getSecurityHeaders } = await import('@/lib/security');
+    const error = sanitizeError(e);
+    return NextResponse.json(error, { status: 500, headers: getSecurityHeaders() });
+  }
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -50,7 +58,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   // Appliquer les modifications
   if (parsed.data.email) u.email = parsed.data.email;
-  if (parsed.data.password) u.passwordHash = parsed.data.password;
+  // 🔒 SÉCURITÉ: Hash le mot de passe avec bcrypt avant stockage
+  if (parsed.data.password) u.passwordHash = await hashPassword(parsed.data.password);
   if (parsed.data.firstName) u.firstName = parsed.data.firstName;
   if (parsed.data.lastName) u.lastName = parsed.data.lastName;
   if (parsed.data.matricule !== undefined) u.matricule = parsed.data.matricule || undefined;
@@ -67,19 +76,25 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
-  if (user.role !== 'SUPER_ADMIN') {
-    return NextResponse.json({ error: 'Permissions insuffisantes' }, { status: 403 });
-  }
-  const { id } = await params;
-  const db = await loadDB();
-  const u = db.users.find(x => x.id === id);
-  if (!u) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 });
-  if (u.role === 'SUPER_ADMIN') return NextResponse.json({ error: 'Impossible de supprimer un super-admin' }, { status: 403 });
+  try {
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
+    if (user.role !== 'SUPER_ADMIN') {
+      return NextResponse.json({ error: 'Permissions insuffisantes' }, { status: 403 });
+    }
+    const { id } = await params;
+    const db = await loadDB();
+    const u = db.users.find(x => x.id === id);
+    if (!u) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 });
+    if (u.role === 'SUPER_ADMIN') return NextResponse.json({ error: 'Impossible de supprimer un super-admin' }, { status: 403 });
 
-  db.users = db.users.filter(x => x.id !== id);
-  await saveDB(db);
-  await audit(user.sub, `${user.firstName} ${user.lastName}`, 'DELETE_USER', 'User', id, { email: u.email });
-  return NextResponse.json({ success: true });
+    db.users = db.users.filter(x => x.id !== id);
+    await saveDB(db);
+    await audit(user.sub, `${user.firstName} ${user.lastName}`, 'DELETE_USER', 'User', id, { email: u.email });
+    return NextResponse.json({ success: true });
+  } catch (e) {
+    const { sanitizeError, getSecurityHeaders } = await import('@/lib/security');
+    const error = sanitizeError(e);
+    return NextResponse.json(error, { status: 500, headers: getSecurityHeaders() });
+  }
 }

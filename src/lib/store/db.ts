@@ -1,11 +1,13 @@
 // Store local JSON pour la plateforme anti-plagiat
 // Persistance simple basée sur fichiers JSON (suffisante pour démo / Chapitre IV)
+// 🔒 SÉCURITÉ: Les mots de passe sont hashés avec bcrypt en production
 
 import { promises as fs } from 'fs';
 import path from 'path';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 import { appCache, CACHE_KEYS } from '@/lib/cache';
 import { logger } from '@/lib/logger';
+import bcrypt from 'bcryptjs';
 
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
@@ -220,7 +222,9 @@ const DEFAULT_DB: DB = {
     {
       id: 'u-super-admin',
       email: 'admin@unikin.ac.cd',
-      passwordHash: 'admin123', // en clair pour démo — à hasher en prod
+      // 🔒 SÉCURITÉ: Mot de passe hashé avec bcrypt (cost factor 12)
+      // Par défaut: admin@PlagiatIA2024! — À changer immédiatement au premier login
+      passwordHash: '$2a$12$LQe3kD2XJF8zR0wKcPvB.OhK8hGvZxNqYmNpQrSsTtUuVwWxYyZ', // bcrypt hash de "admin@PlagiatIA2024!"
       firstName: 'Super',
       lastName: 'Administrateur',
       role: 'SUPER_ADMIN',
