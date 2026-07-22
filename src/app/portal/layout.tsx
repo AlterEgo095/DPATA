@@ -2,6 +2,7 @@
 
 // Portal Layout - Interface simplifiée pour utilisateurs (étudiants/enseignants)
 // Design centré sur l'usage quotidien : validation de sujets, suivi des travaux
+// SÉCURISÉ: Aucun lien visible vers l'admin
 
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
@@ -166,7 +167,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               })}
             </nav>
 
-            {/* User section */}
+            {/* User section - SANS lien admin */}
             <div className="flex items-center gap-3">
               <Badge 
                 variant="secondary" 
@@ -198,16 +199,6 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               >
                 <LogOut className="h-4 w-4" />
               </Button>
-
-              {/* Lien admin si super admin */}
-              {(user.role === 'SUPER_ADMIN' || user.role === 'FACULTY_ADMIN') && (
-                <Link href="/dashboard">
-                  <Button variant="outline" size="sm" className="hidden xl:inline-flex gap-1">
-                <span>Admin</span>
-                <ArrowRight className="h-3 w-3" />
-              </Button>
-                </Link>
-              )}
             </div>
           </div>
         </div>
@@ -256,15 +247,6 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
                 );
               })}
             </nav>
-
-            <div className="absolute bottom-4 left-4 right-4">
-              <Link href="/dashboard" onClick={() => setMobileOpen(false)}>
-                <Button variant="outline" className="w-full gap-2">
-                  <span>Administration</span>
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </Link>
-            </div>
           </div>
         </div>
       )}
