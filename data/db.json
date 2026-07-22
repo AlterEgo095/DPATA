@@ -6,7 +6,7 @@
     {
       "id": "u-super-admin",
       "email": "admin@unikin.ac.cd",
-      "passwordHash": "$2b$12$JWEqOcK3WOoxTl4nhrvMieqqeFpLw6SjLiBBCd/mrv..xd0phwW/m",
+      "passwordHash": "$2b$12$kyIzVqmaG/0.R.D.sI52..YLile6zcGIhII/arjWjoLuEfTl84Via",
       "firstName": "Super",
       "lastName": "Administrateur",
       "role": "SUPER_ADMIN",
