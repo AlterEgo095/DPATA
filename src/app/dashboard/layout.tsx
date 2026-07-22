@@ -89,11 +89,13 @@ function SidebarContent({
   user, 
   pathname, 
   onNavigate,
+  onLogout,
   t 
 }: { 
   user: User; 
   pathname: string; 
   onNavigate?: () => void;
+  onLogout: () => void;
   t: (key: string) => string;
 }) {
   const initials = `${user.firstName.charAt(0)}${user.lastName.charAt(0)}`.toUpperCase();
@@ -178,7 +180,7 @@ function SidebarContent({
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => handleLogout()} className="text-red-600 focus:text-red-700 focus:bg-red-50">
+            <DropdownMenuItem onClick={onLogout} className="text-red-600 focus:text-red-700 focus:bg-red-50">
               <LogOut className="h-4 w-4 mr-2" />
               {t('auth.signOut')}
             </DropdownMenuItem>
@@ -249,7 +251,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen bg-slate-50 flex">
       {/* Desktop Sidebar - Fixed */}
       <aside className="hidden lg:flex w-64 bg-white border-r border-slate-200 flex-col fixed inset-y-0 z-30">
-        <SidebarContent user={user} pathname={pathname} t={t} />
+        <SidebarContent user={user} pathname={pathname} onLogout={handleLogout} t={t} />
       </aside>
 
       {/* Mobile Sidebar - Sheet/Drawer */}
@@ -259,6 +261,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             user={user} 
             pathname={pathname} 
             onNavigate={() => setSidebarOpen(false)}
+            onLogout={handleLogout}
             t={t}
           />
         </SheetContent>
