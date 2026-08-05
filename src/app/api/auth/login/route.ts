@@ -1,150 +1,113 @@
 // Route API: POST /api/auth/login
-// PHASE 1 HARDING SÉCURITÉ - Login sécurisé avec bcrypt + CSRF
+// P0 FIX: Robust body parsing — handles JSON, form-urlencoded, and edge cases.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { loadDB, audit, saveDB } from '@/lib/store/db';
-import { signToken, setAuthCookie } from '@/lib/auth/jwt';
-import { verifyPassword, migratePasswordHash, sanitizeError, generateCSRFToken, rateLimiters } from '@/lib/security';
+import { signToken } from '@/lib/auth/jwt';
+import { verifyPassword, migratePasswordHash, sanitizeError, generateCSRFToken, rateLimiters, getSecurityHeaders } from '@/lib/security';
 import { z } from 'zod';
 
 const LoginSchema = z.object({
   email: z.string().email('Email invalide'),
   password: z.string().min(1, 'Mot de passe requis'),
-  csrfToken: z.string().optional(), // CSRF token for form protection
 });
 
-// Track failed login attempts per IP (additional security layer)
-const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
-const MAX_ATTEMPTS = 20;
-const LOCKOUT_TIME = 60 * 1000; // 1 minute
+/**
+ * Robust body parser — handles JSON, form-urlencoded, and empty bodies.
+ * Fixes: "JSON Parse error: Unexpected identifier 'email'" when client sends form data.
+ */
+async function parseBody(req: NextRequest): Promise<Record<string, unknown>> {
+  const contentType = req.headers.get('content-type') || '';
+  const raw = await req.text();
 
-function isIPLocked(ip: string): boolean {
-  const attempts = loginAttempts.get(ip);
-  if (!attempts) return false;
-  
-  if (Date.now() - attempts.lastAttempt > LOCKOUT_TIME) {
-    loginAttempts.delete(ip);
-    return false;
+  if (!raw || raw.trim().length === 0) return {};
+
+  // JSON body
+  if (contentType.includes('application/json') || raw.trim().startsWith('{')) {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      // Malformed JSON — try form parsing as fallback
+    }
   }
-  
-  return attempts.count >= MAX_ATTEMPTS;
-}
 
-function recordFailedAttempt(ip: string): void {
-  const attempts = loginAttempts.get(ip) || { count: 0, lastAttempt: Date.now() };
-  attempts.count++;
-  attempts.lastAttempt = Date.now();
-  loginAttempts.set(ip, attempts);
-}
+  // Form-urlencoded body (e.g., "email=xxx&password=yyy")
+  if (contentType.includes('application/x-www-form-urlencoded') || raw.includes('=')) {
+    try {
+      const params = new URLSearchParams(raw);
+      const obj: Record<string, string> = {};
+      params.forEach((value, key) => { obj[key] = value; });
+      if (Object.keys(obj).length > 0) return obj;
+    } catch {
+      // fall through
+    }
+  }
 
-function clearFailedAttempts(ip: string): void {
-  loginAttempts.delete(ip);
+  // Last resort: try JSON anyway
+  try { return JSON.parse(raw); } catch { return {}; }
 }
 
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
-  
-  // Check IP-based rate limiting (additional layer)
-  if (isIPLocked(ip)) {
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
+            req.headers.get('x-real-ip') || 'unknown';
+
+  // Rate limiting
+  try {
+    await rateLimiters.auth.consume(ip);
+  } catch {
     return NextResponse.json(
-      { error: 'Trop de tentatives. Réessayez dans 15 minutes.', code: 'IP_LOCKED' },
-      { status: 429 }
+      { error: 'Trop de tentatives. Réessayez dans 15 minutes.', code: 'RATE_LIMITED' },
+      { status: 429, headers: getSecurityHeaders() }
     );
   }
 
   try {
-    const body = await req.json();
+    const body = await parseBody(req);
     const parsed = LoginSchema.safeParse(body);
-    
     if (!parsed.success) {
       return NextResponse.json(
         { error: 'Données invalides', details: parsed.error.flatten() },
-        { status: 400 }
+        { status: 400, headers: getSecurityHeaders() }
       );
     }
 
-    const { email, password, csrfToken } = parsed.data;
-
-    // Validate CSRF token if provided (for form submissions)
-    // Note: For API-first approach, we use cookies + sameSite instead
-    // CSRF tokens are optional for now but validated when present
-    
+    const { email, password } = parsed.data;
     const db = await loadDB();
-    
-    // Find user by email (case-insensitive)
-    const user = db.users.find(
-      u => u.email.toLowerCase() === email.toLowerCase() && u.isActive
-    );
-
-    // Use timing-safe password verification to prevent timing attacks
+    const user = db.users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.isActive);
     const isValidPassword = user ? await verifyPassword(password, user.passwordHash) : false;
 
     if (!user || !isValidPassword) {
-      recordFailedAttempt(ip);
-      
-      // Generic error message to prevent user enumeration
       return NextResponse.json(
         { error: 'Email ou mot de passe incorrect', code: 'INVALID_CREDENTIALS' },
-        { status: 401 }
+        { status: 401, headers: getSecurityHeaders() }
       );
     }
 
-    // Check if password needs migration (legacy hash → bcrypt)
-    let needsMigration = false;
-    if (!user.passwordHash.startsWith('$2a$') && 
-        !user.passwordHash.startsWith('$2b$') && 
-        !user.passwordHash.startsWith('$2y$')) {
-      needsMigration = true;
-    }
-
-    if (needsMigration) {
-      // Migrate legacy hash to bcrypt
+    // Auto-migrate legacy SHA256 -> bcrypt
+    if (!user.passwordHash.startsWith('$2a$') && !user.passwordHash.startsWith('$2b$') && !user.passwordHash.startsWith('$2y$')) {
       const newHash = await migratePasswordHash(password);
-      const userIndex = db.users.findIndex(u => u.id === user.id);
-      if (userIndex !== -1) {
-        db.users[userIndex].passwordHash = newHash;
-        await saveDB(db);
-      }
+      const idx = db.users.findIndex(u => u.id === user.id);
+      if (idx !== -1) { db.users[idx].passwordHash = newHash; await saveDB(db); }
     }
 
-    // Clear failed attempts on successful login
-    clearFailedAttempts(ip);
-
-    // Generate JWT token
     const token = await signToken(user);
-    
-    // Set HTTP-only cookie with security flags
-    await setAuthCookie(token);
-
-    // Generate CSRF token for subsequent requests
     const csrf = generateCSRFToken();
 
-    // Audit log the login
-    await audit(
-      user.id,
-      `${user.firstName} ${user.lastName}`,
-      'LOGIN',
-      'User',
-      user.id,
-      { migrated: needsMigration },
-      ip
-    );
+    await audit(user.id, `${user.firstName} ${user.lastName}`, 'LOGIN', 'User', user.id, {}, ip);
 
-    return NextResponse.json({
-      user: {
-        id: user.id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.role,
-      },
-      csrfToken: csrf, // Return CSRF token for form submissions
+    const response = NextResponse.json({
+      user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role },
+      csrfToken: csrf,
+    }, { headers: getSecurityHeaders() });
+
+    response.cookies.set('plagiat_token', token, {
+      httpOnly: true, secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax', maxAge: 60 * 60 * 24 * 7, path: '/',
     });
+
+    return response;
   } catch (e: any) {
-    // Sanitize error - don't leak internal details
-    const sanitized = sanitizeError(e);
     console.error('[LOGIN_ERROR]', e);
-    
-    return NextResponse.json(sanitized, { status: 500 });
+    return NextResponse.json(sanitizeError(e), { status: 500, headers: getSecurityHeaders() });
   }
 }

@@ -35,9 +35,9 @@ const UpdateUniversitySchema = z.object({
 // UTILITAIRES
 // ============================================================
 
-function findUniversity(id: string): { university: ExtendedUniversity; index: number } | null {
+async function findUniversity(id: string): Promise<{ university: ExtendedUniversity; index: number } | null> {
   // Simuler des données enrichies pour la démo
-  const unis = getUniversities() as unknown as ExtendedUniversity[];
+  const unis = await getUniversities() as unknown as ExtendedUniversity[];
   
   // Enrichir avec des données factices pour la démo
   const enriched = (unis as any).map((u: any, i: number) => ({
@@ -92,7 +92,7 @@ export async function GET(
     }
 
     const { id } = await params;
-    const result = findUniversity(id);
+    const result = await findUniversity(id);
     
     if (!result) {
       return NextResponse.json(
@@ -277,7 +277,7 @@ export async function POST(
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action');
 
-    const result = findUniversity(id);
+    const result = await findUniversity(id);
     if (!result) {
       return NextResponse.json(
         { error: 'Université non trouvée' },

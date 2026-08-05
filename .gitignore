@@ -72,3 +72,10 @@ download/*.png
 
 # Scripts output (memoire)
 /scripts/memoire_images/
+# PM2 ecosystem configs (contain secrets historically)
+ecosystem.*.config.js
+ecosystem.config.js
+
+# Runtime database (JSON store — do not commit)
+/data/*.json
+/data/db.*.json
