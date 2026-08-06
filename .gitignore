@@ -79,3 +79,4 @@ ecosystem.config.js
 # Runtime database (JSON store — do not commit)
 /data/*.json
 /data/db.*.json
+backups/
