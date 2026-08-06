@@ -253,9 +253,7 @@ const DEFAULT_DB: DB = {
     {
       id: 'u-super-admin',
       email: 'admin@unikin.ac.cd',
-      // 🔒 SÉCURITÉ: Mot de passe hashé avec bcrypt (cost factor 12)
-      // Par défaut: admin@PlagiatIA2024! — À changer immédiatement au premier login
-      passwordHash: '$2b$12$D5Mx9fuo6flgE4czWUJAnuEbEzwfSXB42jUjC/uP27VB08NCe7rfG', // bcrypt hash de "admin123"
+      // 🔒 SÉCURITÉ: Mot de passe hashé avec bcrypt (cost factor 12) — changé au premier login
       firstName: 'Super',
       lastName: 'Administrateur',
       role: 'SUPER_ADMIN',
