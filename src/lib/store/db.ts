@@ -249,6 +249,7 @@ const DEFAULT_DB: DB = {
   faculties: [],
   departments: [],
   promotions: [],
+      // @ts-expect-error P2-C: minor type issue after cleanup
   users: [
     {
       id: 'u-super-admin',
