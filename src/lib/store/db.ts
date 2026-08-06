@@ -1,6 +1,11 @@
 // Store local JSON pour la plateforme anti-plagiat
 // Persistance simple basée sur fichiers JSON (suffisante pour démo / Chapitre IV)
 // 🔒 SÉCURITÉ: Les mots de passe sont hashés avec bcrypt en production
+//
+// P4-A FIXES:
+//  - A8: Added `revokedTokens: string[]` to DB schema for JWT revocation
+//  - A9: Added `forcedLogoutAt?: string` to User schema for force-logout
+// Both fields are optional at runtime so existing db.json files load fine.
 
 import { promises as fs } from 'fs';
 import path from 'path';
@@ -61,6 +66,14 @@ export interface User {
   promotionId?: string;
   createdAt: string;
   updatedAt: string;
+  // P4-A (A9): ISO timestamp of the most recent force-logout action. Any JWT
+  // whose `iat` is older than this value is treated as invalid by
+  // getCurrentUser(). Cleared/undefined means no force-logout in effect.
+  forcedLogoutAt?: string;
+  // P4-C: ISO timestamp of the user's last password change. Used by the
+  // reset-password route to track password rotation history. Optional so
+  // legacy db.json files (without this field) load fine.
+  passwordChangedAt?: string;
 }
 
 export interface Document {
@@ -125,6 +138,12 @@ export interface AuditLog {
   details?: string;
   ipAddress?: string;
   createdAt: string;
+  // P4-D D2: forensic enrichment fields — all optional, backward compatible.
+  userAgent?: string;
+  before?: string;   // JSON-stringified snapshot of the entity before mutation
+  after?: string;    // JSON-stringified snapshot of the entity after mutation
+  method?: string;   // HTTP method (GET/POST/PUT/DELETE) — optional
+  path?: string;     // Request path — optional
 }
 
 export interface AcademicSubject {
@@ -135,7 +154,7 @@ export interface AcademicSubject {
   field?: string; // filière
   specialty?: string; // spécialité
   level?: string; // niveau d'étude (L1, L2, L3, DEA, Doctorat...)
-  keywords?: string; // mots-clés séparés par virgules
+  keywords?: string; // mots-clés séparés par virgule
   objectives?: string; // objectifs de recherche
   problemStatement?: string; // problématique
   facultyId?: string;
@@ -221,6 +240,9 @@ export interface DB {
   settings: Record<string, string>;
   apiKeys: ApiKeyRecord[];
   apiAccessLogs: ApiAccessLogRecord[];
+  // P4-A (A8): list of revoked JWT `jti` claims. Optional so older db.json
+  // files load fine; checked by verifyToken() in src/lib/auth/jwt.ts.
+  revokedTokens?: string[];
 }
 
 export interface BatchJobRecord {
@@ -272,6 +294,8 @@ const DEFAULT_DB: DB = {
   batchJobs: [],
   apiKeys: [],
   apiAccessLogs: [], // Analyses groupées
+  // P4-A (A8): starts empty; revokeToken() helper appends jti entries.
+  revokedTokens: [],
   settings: {
     'ia.threshold': '0.80',
     'ia.model': 'distiluse-base-multilingual-cased-v1',
@@ -300,7 +324,12 @@ export async function loadDB(): Promise<DB> {
   await ensureDataDir();
   try {
     const raw = await fs.readFile(DB_FILE, 'utf-8');
-    cache = JSON.parse(raw);
+    const parsed = JSON.parse(raw) as DB;
+    // P4-A (A8): ensure revokedTokens exists on legacy DBs
+    if (!Array.isArray(parsed.revokedTokens)) {
+      parsed.revokedTokens = [];
+    }
+    cache = parsed;
   } catch {
     cache = { ...DEFAULT_DB };
     await saveDB(cache);
@@ -342,7 +371,18 @@ export async function audit(
   entity: string,
   entityId?: string,
   details?: any,
-  ipAddress?: string
+  ipAddress?: string,
+  // P4-D D2: optional 8th argument carrying forensic enrichment fields.
+  // Backward compatible — existing 7-arg callers continue to work.
+  // `before` and `after` accept any value (object or string); they are
+  // JSON-stringified before storage so callers can pass plain objects.
+  meta?: {
+    userAgent?: string;
+    before?: unknown;  // JSON-stringified snapshot of entity before mutation
+    after?: unknown;   // JSON-stringified snapshot of entity after mutation
+    method?: string;   // HTTP method (GET/POST/PUT/DELETE)
+    path?: string;     // Request path
+  }
 ) {
   const db = await loadDB();
   db.auditLogs.unshift({
@@ -355,6 +395,13 @@ export async function audit(
     details: details ? JSON.stringify(details) : undefined,
     ipAddress,
     createdAt: now(),
+    // P4-D D2: spread forensic fields if provided. before/after are
+    // JSON-stringified so callers can pass plain objects.
+    userAgent: meta?.userAgent,
+    before: meta?.before !== undefined ? JSON.stringify(meta.before) : undefined,
+    after: meta?.after !== undefined ? JSON.stringify(meta.after) : undefined,
+    method: meta?.method,
+    path: meta?.path,
   });
   // Garde les 1000 derniers logs
   if (db.auditLogs.length > 1000) db.auditLogs = db.auditLogs.slice(0, 1000);
@@ -369,7 +416,7 @@ export async function audit(
 // Wrap saveDB to auto-invalidate cache
 export async function saveDBWithCache(db: DB, invalidatePatterns?: string[]): Promise<void> {
   await saveDB(db);
-  
+
   // Auto-invalidate relevant caches
   if (!invalidatePatterns || invalidatePatterns.length === 0) {
     appCache.invalidate(); // Invalidate all by default
@@ -378,6 +425,6 @@ export async function saveDBWithCache(db: DB, invalidatePatterns?: string[]): Pr
       appCache.invalidatePattern(pattern);
     }
   }
-  
+
   logger.info('Database saved and cache invalidated', { patterns: invalidatePatterns });
 }

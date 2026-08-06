@@ -1,10 +1,17 @@
 // GET /api/federation/universities — Liste des universités fédérées
-// POST /api/federation/universités — Ajouter/inviter une université
+// POST /api/federation/universities — Ajouter/inviter une université
+// PUT  /api/federation/universities — Mettre à jour la configuration globale
+//
+// P4-D D6: Added audit() calls on POST (federation.create) and PUT
+// (federation.update_config) — captures IP + UA + before/after.
+
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth/jwt';
 import { getUniversities, addUniversity, saveUniversities } from '@/lib/federation/store';
 import type { University, FederationConfig } from '@/lib/federation/types';
 import { z } from 'zod';
+import { audit } from '@/lib/store/db';
+import { getRequestMeta } from '@/lib/request-meta';
 
 // ============================================================
 // SCHÉMAS DE VALIDATION
@@ -49,8 +56,6 @@ const DEFAULT_CONFIG: FederationConfig = {
 };
 
 // P2-B: Type alias for the stats object returned by the GET route.
-// Previously `let stats = null` inferred type `null` which could not accept
-// the stats object. Now explicitly typed.
 interface FederationListStats {
   totalUniversities: number;
   activeUniversities: number;
@@ -73,19 +78,14 @@ export async function GET(request: NextRequest) {
 
     let universities = await getUniversities();
 
-    // Filtrer par statut si demandé
     if (statusFilter) {
-      // P2-B: u.isActive resolved by adding isActive? to the University
-      // interface in @/lib/federation/types.
       universities = universities.filter(u => 
         u.isActive === (statusFilter === 'active')
       );
     }
 
-    // Enrichir avec des statistiques de base si demandé
     let stats: FederationListStats | null = null;
     if (includeStats) {
-      // P2-B: u.isActive resolved by adding isActive? to University.
       const activeCount = universities.filter(u => u.isActive).length;
       const totalDocs = universities.reduce((sum, u) => sum + (u as any).documentCount || 0, 0);
       
@@ -138,7 +138,6 @@ export async function POST(request: NextRequest) {
 
     const data = parsed.data;
 
-    // Vérifier que le code n'existe pas déjà
     const existingUnis = await getUniversities();
     if (existingUnis.some(u => u.code === data.code)) {
       return NextResponse.json({
@@ -147,22 +146,10 @@ export async function POST(request: NextRequest) {
       }, { status: 409 });
     }
 
-    // Hasher la API key si fournie (simulation - en production utiliser bcrypt)
     const hashedApiKey = data.apiKey 
       ? `hashed_${Buffer.from(data.apiKey).toString('base64').slice(0, 32)}`
       : '';
 
-    // P2-B: Cast the partial university object to the addUniversity
-    // parameter type. The object literal only provides a subset of the
-    // required University fields (code, name, apiUrl, apiKey, isActive).
-    // The University type now includes apiUrl? and isActive? (added in
-    // P2-B), so these are no longer excess properties. However, many other
-    // required fields (country, city, contactEmail, etc.) are still
-    // missing from this call. The store's addUniversity function spreads
-    // the data and only adds id + createdAt, so missing fields remain
-    // undefined at runtime (existing behavior). The cast preserves this
-    // behavior without requiring a larger refactor of the University type
-    // or the store.
     const university = await addUniversity({
       code: data.code,
       name: data.name,
@@ -171,10 +158,46 @@ export async function POST(request: NextRequest) {
       isActive: data.status === 'active',
     } as unknown as Omit<University, 'id' | 'createdAt'>);
 
+    // ---------------------------------------------------------------
+    // P4-D D6: audit log entry — federation.create
+    // ---------------------------------------------------------------
+    try {
+      const { ip, userAgent } = getRequestMeta(request);
+      await audit(
+        user.sub,
+        `${user.firstName} ${user.lastName}`,
+        'FEDERATION_CREATE',
+        'University',
+        university.id,
+        {
+          name: data.name,
+          code: data.code,
+          country: data.country,
+          city: data.city,
+          apiEndpoint: data.apiEndpoint,
+          status: data.status,
+        },
+        ip,
+        {
+          userAgent,
+          method: 'POST',
+          path: '/api/federation/universities',
+          after: {
+            id: university.id,
+            code: university.code,
+            name: university.name,
+            isActive: university.isActive,
+          },
+        }
+      );
+    } catch (auditErr) {
+      console.error('[federation POST] audit failed:', auditErr instanceof Error ? auditErr.message : auditErr);
+    }
+
     // Retourner la réponse sans la API key hashée
     const responseUniversity = {
       ...university,
-      apiKey: undefined, // Ne jamais exposer la clé API
+      apiKey: undefined,
       documentCount: 0,
       lastSyncAt: null,
       lastSyncStatus: null,
@@ -220,9 +243,33 @@ export async function PUT(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // En production: sauvegarder en DB
-    // Pour l'instant, on retourne la config mise à jour
+    const beforeConfig = { ...DEFAULT_CONFIG };
     const updatedConfig = { ...DEFAULT_CONFIG, ...parsed.data };
+
+    // ---------------------------------------------------------------
+    // P4-D D6: audit log entry — federation.update_config
+    // ---------------------------------------------------------------
+    try {
+      const { ip, userAgent } = getRequestMeta(request);
+      await audit(
+        user.sub,
+        `${user.firstName} ${user.lastName}`,
+        'FEDERATION_UPDATE_CONFIG',
+        'FederationConfig',
+        undefined,
+        { diff: parsed.data },
+        ip,
+        {
+          userAgent,
+          method: 'PUT',
+          path: '/api/federation/universities',
+          before: beforeConfig,
+          after: updatedConfig,
+        }
+      );
+    } catch (auditErr) {
+      console.error('[federation PUT] audit failed:', auditErr instanceof Error ? auditErr.message : auditErr);
+    }
 
     return NextResponse.json({
       success: true,

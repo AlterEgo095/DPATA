@@ -80,3 +80,7 @@ ecosystem.config.js
 /data/*.json
 /data/db.*.json
 backups/
+data/audit.log
+data/backups/
+.p4*_backup/
+.p4*_fixes/

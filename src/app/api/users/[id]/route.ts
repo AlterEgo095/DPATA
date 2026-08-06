@@ -1,5 +1,7 @@
 // GET /api/users/[id] + PUT + DELETE
 // 🔒 SÉCURITÉ: Les mots de passe sont hashés avec bcrypt avant stockage
+// P4-A FIX: PUT handler now blocks FACULTY_ADMIN from editing SUPER_ADMIN
+// users and from setting body.role='SUPER_ADMIN' (privilege escalation).
 import { NextRequest, NextResponse } from 'next/server';
 import { loadDB, saveDB, now, audit } from '@/lib/store/db';
 import { getCurrentUser } from '@/lib/auth/jwt';
@@ -49,6 +51,25 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const db = await loadDB();
   const u = db.users.find(x => x.id === id);
   if (!u) return NextResponse.json({ error: 'Utilisateur introuvable' }, { status: 404 });
+
+  // P4-A FIX: prevent FACULTY_ADMIN from editing a SUPER_ADMIN account
+  // (would otherwise allow email/password takeover of a super-admin).
+  if (u.role === 'SUPER_ADMIN' && user.role !== 'SUPER_ADMIN') {
+    return NextResponse.json(
+      { error: ' Impossible de modifier un compte SUPER_ADMIN' },
+      { status: 403 }
+    );
+  }
+
+  // P4-A FIX: prevent role escalation via body — Zod already restricts the
+  // enum to ['FACULTY_ADMIN', 'TEACHER', 'STUDENT'] so SUPER_ADMIN can't be
+  // sent, but we add a defensive check in case the schema is ever loosened.
+  if ((body as any).role === 'SUPER_ADMIN' && user.role !== 'SUPER_ADMIN') {
+    return NextResponse.json(
+      { error: 'Escalade de rôle interdite' },
+      { status: 403 }
+    );
+  }
 
   if (parsed.data.email && parsed.data.email !== u.email) {
     if (db.users.some(x => x.email.toLowerCase() === parsed.data.email!.toLowerCase())) {

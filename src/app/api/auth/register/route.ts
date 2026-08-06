@@ -1,11 +1,16 @@
 // POST /api/auth/register
 // Public student self-registration endpoint
+//
+// P4-D D6: Added audit() call (user.register) — captures IP + UA + new user
+// metadata (no password hash, only safe fields). This closes the
+// "REGISTER is not audit-logged" gap flagged in AUDIT-4 §6.1.
 
 import { NextRequest, NextResponse } from 'next/server';
-import { loadDB, saveDB, genId, now, type UserRole } from '@/lib/store/db';
+import { loadDB, saveDB, genId, now, audit, type UserRole } from '@/lib/store/db';
 import { hashPassword, getSecurityHeaders, sanitizeError } from '@/lib/security';
 import { rateLimiter, createRateLimitResponse } from '@/lib/api/middleware/rate-limiter';
 import { z } from 'zod';
+import { getRequestMeta } from '@/lib/request-meta';
 
 // 🔒 XSS Prevention: Sanitize user input by stripping HTML tags and dangerous patterns
 function sanitizeInput(str: string): string {
@@ -27,13 +32,12 @@ const RegisterSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  // Extract request meta up-front so the audit call can use it.
+  const { ip, userAgent } = getRequestMeta(req);
+
   try {
     // Rate limiting - 5 registrations per hour per IP
-    const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
     // P2-B: Fixed rateLimiter.check() call signature.
-    // The method signature is check(identifier, config?: Partial<RateLimitConfig>).
-    // The old call passed (ip, maxRequests, windowMs) as 3 positional args which
-    // is invalid. Now passes a single config object as the 2nd argument.
     const rateLimit = rateLimiter.check(ip, { maxRequests: 5, windowMs: 3600000 });
     
     if (!rateLimit.allowed) {
@@ -54,7 +58,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 🔒 Sanitize ALL user inputs to prevent XSS
     const sanitizedData = {
       ...parsed.data,
       firstName: sanitizeInput(parsed.data.firstName),
@@ -63,7 +66,6 @@ export async function POST(req: NextRequest) {
       matricule: parsed.data.matricule ? sanitizeInput(parsed.data.matricule) : null,
     };
 
-    // Re-validate after sanitization
     if (sanitizedData.firstName.length < 2) {
       return NextResponse.json(
         { error: 'Prénom invalide après nettoyage', code: 'SANITIZATION_ERROR' },
@@ -71,12 +73,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // P2-B: Fixed loadDB() call — loadDB takes no arguments (signature is
-    // `loadDB(): Promise<DB>`). The old `loadDB(true)` was passing a
-    // bogus force-refresh flag that doesn't exist on the JSON store.
     const db = await loadDB();
     
-    // Check for existing email (case-insensitive)
     if (db.users.some(u => u.email.toLowerCase() === sanitizedData.email.toLowerCase())) {
       return NextResponse.json(
         { error: 'Cet email est déjà utilisé', code: 'DUPLICATE_EMAIL' },
@@ -84,7 +82,6 @@ export async function POST(req: NextRequest) {
       );
     }
     
-    // Check for existing matricule
     if (sanitizedData.matricule && db.users.some(u => u.matricule === sanitizedData.matricule)) {
       return NextResponse.json(
         { error: 'Ce matricule existe déjà', code: 'DUPLICATE_MATRICULE' },
@@ -92,14 +89,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Hash password
     const passwordHash = await hashPassword(parsed.data.password);
 
-    // Create new STUDENT user (self-registration only allows student role)
-    // P2-B: Fixed null vs undefined for optional User fields.
-    // The User interface declares matricule/facultyId/departmentId/promotionId
-    // as `string | undefined` (optional). Using `null` made the object
-    // unassignable to User. Now uses `undefined` consistently.
     const newUser = {
       id: genId('usr'),
       email: sanitizedData.email,
@@ -107,7 +98,7 @@ export async function POST(req: NextRequest) {
       firstName: sanitizedData.firstName,
       lastName: sanitizedData.lastName,
       matricule: sanitizedData.matricule ?? undefined,
-      role: 'STUDENT' as UserRole, // Force STUDENT role for self-registration
+      role: 'STUDENT' as UserRole,
       isActive: true,
       facultyId: sanitizedData.facultyId || undefined,
       departmentId: undefined,
@@ -120,6 +111,42 @@ export async function POST(req: NextRequest) {
     await saveDB(db);
 
     console.log(`[REGISTER] New student registered: ${newUser.email} (${newUser.id})`);
+
+    // ---------------------------------------------------------------
+    // P4-D D6: audit log entry — user.register
+    // ---------------------------------------------------------------
+    // Self-registration: actor is the new user themselves (no admin
+    // involved). userId = newUser.id (NOT undefined) so the audit log
+    // can be filtered by the new user's ID immediately.
+    try {
+      await audit(
+        newUser.id,
+        `${newUser.firstName} ${newUser.lastName}`,
+        'REGISTER',
+        'User',
+        newUser.id,
+        {
+          email: newUser.email,
+          role: newUser.role,
+          facultyId: newUser.facultyId,
+          hasMatricule: !!newUser.matricule,
+        },
+        ip,
+        {
+          userAgent,
+          method: 'POST',
+          path: '/api/auth/register',
+          after: {
+            id: newUser.id,
+            email: newUser.email,
+            role: newUser.role,
+            createdAt: newUser.createdAt,
+          },
+        }
+      );
+    } catch (auditErr) {
+      console.error('[REGISTER] audit failed:', auditErr instanceof Error ? auditErr.message : auditErr);
+    }
 
     return NextResponse.json(
       { 

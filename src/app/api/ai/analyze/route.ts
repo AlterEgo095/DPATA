@@ -17,6 +17,9 @@ import {
   ComparativeAnalysisResult,
   AnalysisProgress,
 } from '@/lib/ia/engines/hybrid-engine';
+import { audit } from '@/lib/store/db';
+import { getCurrentUser } from '@/lib/auth/jwt';
+import { getRequestMeta } from '@/lib/request-meta';
 
 // ============================================================================
 // TYPES POUR L'API
@@ -104,6 +107,14 @@ function generateAnalysisId(): string {
  * ```
  */
 export async function POST(request: NextRequest) {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Non authentifié', code: 'AUTH_REQUIRED' },
+        { status: 401 }
+      );
+    }
+
   const startTime = Date.now();
   
   try {
@@ -241,6 +252,34 @@ export async function POST(request: NextRequest) {
       session.result = result;
       session.updatedAt = new Date().toISOString();
 
+      // ---------------------------------------------------------------
+      // P4-D D6: audit log entry — ai.analyze (success)
+      // ---------------------------------------------------------------
+      try {
+        const currentUser = await getCurrentUser();
+        const { ip, userAgent } = getRequestMeta(request);
+        await audit(
+          currentUser?.sub,
+          currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : undefined,
+          'AI_ANALYZE',
+          'Analysis',
+          analysisId,
+          {
+            queryLength: body.query.length,
+            corpusSize: body.corpus.length,
+            engine: (result as any)?.engineUsed || body.options?.engineType || 'unknown',
+            overallScore: (result as any)?.overallScore ?? null,
+            matchesCount: (result as any)?.matches?.length ?? 0,
+            processingTimeMs: Date.now() - startTime,
+            success: true,
+          },
+          ip,
+          { userAgent, method: 'POST', path: '/api/ai/analyze' }
+        );
+      } catch (auditErr) {
+        console.error('[ai/analyze] audit failed:', auditErr instanceof Error ? auditErr.message : auditErr);
+      }
+
       // Nettoyer les anciennes sessions (garder les 100 dernières)
       cleanupOldSessions();
 
@@ -294,6 +333,13 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Non authentifié', code: 'AUTH_REQUIRED' },
+        { status: 401 }
+      );
+    }
     const { searchParams } = new URL(request.url);
     const analysisId = searchParams.get('id');
     const limit = parseInt(searchParams.get('limit') || '20', 10);

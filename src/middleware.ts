@@ -1,8 +1,29 @@
 /**
  * ============================================================================
- * PlagiatIA — Security & i18n Middleware (Edge-compatible)
+ * PlagiatIA — Security & i18n Middleware (P4-C: Node.js runtime + metrics)
  * ============================================================================
- * Task ID: P3-A — CSP hardening
+ * Task ID: P3-A — CSP hardening (original)
+ * Task ID: P4-C — Wire metrics.recordRequest() + 5 new metrics integration
+ *
+ * P4-C CHANGE: Switched middleware runtime from Edge to Node.js so that the
+ * `metrics` singleton is shared with the Node.js route handlers (the
+ * /api/v1/metrics endpoint runs in Node.js by default). Next.js 16.1
+ * supports `runtime: 'nodejs'` in middleware config (stable since 15.3).
+ *
+ * The middleware body itself was already Node.js-compatible (no Edge-only
+ * APIs), so the runtime switch is a one-line change with zero behavioral
+ * impact except: (a) metrics singleton is now shared, (b) `process.on()`
+ * handlers in instrumentation.ts continue to work as before.
+ *
+ * P4-C METRICS WIRING:
+ *   - normalizePath(): collapses /api/users/123 -> /api/users/:id to
+ *     prevent Prometheus label-cardinality explosion.
+ *   - recordRequest(): increments http_requests_total + observes
+ *     http_request_duration_ms on every response (including rate-limit 429s
+ *     and static-asset responses).
+ *   - errors_total{type:'4xx'}: incremented on rate-limit 429 responses.
+ *   - All metrics calls wrapped in try/catch — metrics must NEVER break a
+ *     request.
  *
  * CONTENT-SECURITY-POLICY (CSP) — Why 'unsafe-inline' / 'unsafe-eval' are kept
  * ------------------------------------------------------------------------
@@ -60,12 +81,14 @@
  *   Cross-Origin-Opener-Policy: same-origin       isolates browsing context (modern Spectre defense)
  *   Cross-Origin-Resource-Policy: same-origin     restricts who can load resources cross-origin
  *
- * This is P3-A work. Output: /home/z/my-project/p3_fixes/middleware.ts
+ * Output: /home/z/my-project/p4c_fixes/middleware.ts
  * ============================================================================
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { locales, defaultLocale, cookieName, isValidLocale } from '@/lib/i18n/config';
+// P4-C: import metrics singleton (Node.js runtime, shared with route handlers)
+import { metrics } from '@/lib/observability/metrics';
 
 // ============================================================================
 // Content-Security-Policy header value (single string, semicolon-separated).
@@ -93,16 +116,16 @@ const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 function checkRateLimit(key: string, maxRequests: number, windowMs: number): boolean {
   const now = Date.now();
   const record = rateLimitMap.get(key);
-  
+
   if (!record || now > record.resetTime) {
     rateLimitMap.set(key, { count: 1, resetTime: now + windowMs });
     return true;
   }
-  
+
   if (record.count >= maxRequests) {
     return false;
   }
-  
+
   record.count++;
   return true;
 }
@@ -117,6 +140,56 @@ if (typeof globalThis !== 'undefined') {
       }
     }
   }, 60000);
+}
+
+// ============================================================================
+// P4-C: Path normalization for Prometheus label cardinality control.
+// ============================================================================
+//
+// Problem: parameterized routes (/api/users/123, /api/documents/abc-456) would
+// create one Prometheus series per ID — at scale this explodes memory usage
+// in Prometheus and slows down queries.
+//
+// Solution: collapse any path segment that looks like an ID (UUID, numeric,
+// or known prefix-id format like "usr-abc123") to the placeholder `:id`.
+//
+// Examples:
+//   /api/users                       -> /api/users
+//   /api/users/123                   -> /api/users/:id
+//   /api/users/usr-abc123def456      -> /api/users/:id
+//   /api/users/u-super-admin         -> /api/users/:id
+//   /api/documents/0d8e... (UUID)    -> /api/documents/:id
+//   /api/v1/documents/abc/analyze    -> /api/v1/documents/:id/analyze
+//
+// Static asset prefixes (/_next/, /icons/, etc.) are passed through unchanged
+// because they're already low-cardinality.
+
+function isIdLike(segment: string): boolean {
+  if (!segment) return false;
+  // Pure numeric: "123", "4567"
+  if (/^\d+$/.test(segment)) return true;
+  // UUID (8-4-4-4-12 hex): "0d8e1f2a-3b4c-..."
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(segment)) return true;
+  // Prefixed ID: "usr-abc123", "doc-xyz789", "log-abc", "u-super-admin"
+  // Pattern: 2-5 lowercase letters, dash, then 4+ alphanumeric chars
+  if (/^[a-z]{2,5}-[a-z0-9]{4,}$/i.test(segment)) return true;
+  // Long hex string (>= 8 chars): MongoDB-style ObjectId, etc.
+  if (/^[a-f0-9]{8,}$/i.test(segment)) return true;
+  return false;
+}
+
+function normalizePath(pathname: string): string {
+  if (!pathname) return '/';
+  // Fast path: don't normalize static assets.
+  if (pathname.startsWith('/_next/') || pathname.startsWith('/icons/')) return pathname;
+  const segments = pathname.split('/');
+  // segments[0] is always '' (leading /)
+  for (let i = 1; i < segments.length; i++) {
+    if (isIdLike(segments[i])) {
+      segments[i] = ':id';
+    }
+  }
+  return segments.join('/');
 }
 
 /**
@@ -215,10 +288,46 @@ function applySecurityHeaders(response: NextResponse): NextResponse {
 }
 
 /**
+ * P4-C: Record an HTTP request in the metrics registry.
+ *
+ * Wrapped in try/catch — metrics must NEVER break a request. If the metrics
+ * library throws for any reason, we silently swallow the error and let the
+ * response go through.
+ *
+ * @param method   HTTP method (GET, POST, etc.)
+ * @param pathname Raw request pathname (will be normalized)
+ * @param status   Response status code
+ * @param durationMs Elapsed time in milliseconds
+ * @param isError  If true, also increment errors_total{type} counter
+ * @param errorType Error type label ('4xx' | '5xx' | 'uncaught')
+ */
+function recordMetrics(
+  method: string,
+  pathname: string,
+  status: number,
+  durationMs: number,
+  isError: boolean = false,
+  errorType: '4xx' | '5xx' | 'uncaught' = '5xx'
+): void {
+  try {
+    const normalizedPath = normalizePath(pathname);
+    metrics.recordRequest(method, normalizedPath, status, durationMs);
+    if (isError) {
+      metrics.incrementCounter('errors_total', { type: errorType });
+    }
+  } catch {
+    // never let metrics break the request
+  }
+}
+
+/**
  * Middleware principal - Combine sécurité et i18n
  */
 export async function middleware(request: NextRequest) {
+  // P4-C: capture start time at the very top so duration is accurate.
+  const start = Date.now();
   const { pathname } = request.nextUrl;
+  const method = request.method;
 
   // Ignorer les routes statiques et API internes
   const ignoredPaths = [
@@ -235,6 +344,8 @@ export async function middleware(request: NextRequest) {
     // — CSP must cover ALL responses per P3-A requirement.
     const staticResponse = NextResponse.next();
     applySecurityHeaders(staticResponse);
+    // P4-C: record metrics for ignored-path responses too (status 200).
+    recordMetrics(method, pathname, 200, Date.now() - start);
     return staticResponse;
   }
 
@@ -261,8 +372,8 @@ export async function middleware(request: NextRequest) {
 
   // === Rate Limiting pour API routes ===
   if (pathname.startsWith('/api/')) {
-    const ip = request.headers.get('x-forwarded-for') || 
-                request.headers.get('x-real-ip') || 
+    const ip = request.headers.get('x-forwarded-for') ||
+                request.headers.get('x-real-ip') ||
                 'unknown';
 
     // Auth routes ont des limites modérées (60 requêtes / min)
@@ -273,6 +384,8 @@ export async function middleware(request: NextRequest) {
           { status: 429 }
         );
         applySecurityHeaders(rateLimitResponse);
+        // P4-C: record 429 as a 4xx error.
+        recordMetrics(method, pathname, 429, Date.now() - start, true, '4xx');
         return rateLimitResponse;
       }
     }
@@ -284,14 +397,25 @@ export async function middleware(request: NextRequest) {
         { status: 429 }
       );
       applySecurityHeaders(rateLimitResponse);
+      // P4-C: record 429 as a 4xx error.
+      recordMetrics(method, pathname, 429, Date.now() - start, true, '4xx');
       return rateLimitResponse;
     }
   }
 
+  // P4-C: record successful pass-through (status 200 — route handler may
+  // override this with a different status, but middleware cannot see that).
+  recordMetrics(method, pathname, 200, Date.now() - start);
   return response;
 }
 
 export const config = {
+  // P4-C: Switch to Node.js runtime so the metrics singleton is shared with
+  // the /api/v1/metrics route handler (which runs in Node.js by default).
+  // Without this, Edge runtime would have its own singleton and the metrics
+  // endpoint would always show http_requests_total = 0.
+  // NOTE: Turbopack requires `runtime` to be a plain string literal (no `as const`).
+  runtime: 'nodejs',
   matcher: [
     '/((?!_next/static|_next/image|favicon.ico|icons/|manifest.json|sw.js).*)',
   ],

@@ -10,7 +10,8 @@ import {
   LayoutDashboard, Building2, Network, Users, FileText, FlaskConical,
   ScrollText, Settings, LogOut, Loader2, ShieldCheck, ChevronRight,
   GraduationCap, UserCog, BookOpen, Library, Globe, Lightbulb, Database,
-  Menu, X, Layers
+  Menu, X, Layers, Brain, KeyRound, Monitor, Server, HeartPulse,
+  FileSearch, ShieldHalf, Archive
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -65,7 +66,21 @@ const NAV_SECTIONS = [
     labelKey: 'systeme',
     items: [
       { href: '/dashboard/audit', labelKey: 'nav.audit', icon: ScrollText, roles: ['SUPER_ADMIN'] },
+      { href: '/dashboard/admin/logs', labelKey: 'nav.adminLogs', icon: FileSearch, roles: ['SUPER_ADMIN'] },
       { href: '/dashboard/settings', labelKey: 'nav.settings', icon: Settings, roles: ['SUPER_ADMIN'] },
+    ],
+  },
+  {
+    labelKey: 'configuration',
+    items: [
+      { href: '/dashboard/admin/ai-settings', labelKey: 'nav.aiSettings', icon: Brain, roles: ['SUPER_ADMIN'] },
+      { href: '/dashboard/admin/settings', labelKey: 'nav.systemSettings', icon: Settings, roles: ['SUPER_ADMIN'] },
+      { href: '/dashboard/api-keys', labelKey: 'nav.apiKeys', icon: KeyRound, roles: ['SUPER_ADMIN'] },
+      { href: '/dashboard/admin/roles', labelKey: 'nav.roles', icon: ShieldHalf, roles: ['SUPER_ADMIN'] },
+      { href: '/dashboard/admin/sessions', labelKey: 'nav.sessions', icon: Monitor, roles: ['SUPER_ADMIN'] },
+      { href: '/dashboard/admin/backups', labelKey: 'nav.backups', icon: Archive, roles: ['SUPER_ADMIN'] },
+      { href: '/dashboard/admin/system', labelKey: 'nav.system', icon: Server, roles: ['SUPER_ADMIN'] },
+      { href: '/dashboard/admin/health', labelKey: 'nav.health', icon: HeartPulse, roles: ['SUPER_ADMIN'] },
     ],
   },
 ];

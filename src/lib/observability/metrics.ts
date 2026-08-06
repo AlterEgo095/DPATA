@@ -1,4 +1,4 @@
-// src/lib/observability/metrics.ts — P3-C NEW: in-memory metrics collector
+// src/lib/observability/metrics.ts — P3-C + P4-C UPDATED: in-memory metrics collector
 //
 // Prometheus-inspired metrics library (NO external dependencies).
 // Used by /api/v1/metrics endpoint to expose operational telemetry for
@@ -12,9 +12,18 @@
 //   - process_memory_heap_total_bytes                gauge
 //   - process_memory_rss_bytes                       gauge
 //
+// P4-C additions (5 new metrics):
+//   - active_users_gauge                             gauge (unique users in last 5 min)
+//   - zai_tokens_used_total{model,type}              counter (prompt/completion)
+//   - ocr_documents_processed_total                  counter
+//   - errors_total{type}                             counter (5xx, 4xx, uncaught)
+//   - rbac_denies_total{required_role}               counter
+//
 // Usage:
 //   import { metrics } from '@/lib/observability/metrics'
 //   metrics.recordRequest('GET', '/api/health', 200, 12)
+//   metrics.touchUser('user-abc')
+//   metrics.recordZaiTokens('glm-4.5-flash', 'completion', 250)
 //   const promText = metrics.getPrometheusFormat()
 //
 // All metrics are in-memory; they reset on process restart (PM2 reload).
@@ -100,6 +109,27 @@ const STANDARD_METRICS: Record<string, { type: MetricType; help: string }> = {
     type: 'gauge',
     help: 'Process resident set size bytes',
   },
+  // === P4-C: 5 new metrics ===
+  active_users_gauge: {
+    type: 'gauge',
+    help: 'Number of unique authenticated users active in the last 5 minutes',
+  },
+  zai_tokens_used_total: {
+    type: 'counter',
+    help: 'Total ZAI (LLM) tokens consumed, by model and type (prompt/completion)',
+  },
+  ocr_documents_processed_total: {
+    type: 'counter',
+    help: 'Total OCR documents successfully processed',
+  },
+  errors_total: {
+    type: 'counter',
+    help: 'Total application errors, by type (5xx, 4xx, uncaught)',
+  },
+  rbac_denies_total: {
+    type: 'counter',
+    help: 'Total RBAC access denials, by required_role',
+  },
 }
 
 // ============================================================
@@ -131,6 +161,11 @@ function formatLabels(labelStr: string): string {
 // ============================================================
 // MetricsRegistry (singleton)
 // ============================================================
+
+// Active-users tracking window (5 min, in milliseconds).
+const ACTIVE_USER_WINDOW_MS = 5 * 60 * 1000
+// Pruning interval (60 s) — runs as a single setInterval per process.
+const ACTIVE_USER_PRUNE_INTERVAL_MS = 60 * 1000
 
 class MetricsRegistry {
   private metrics: Map<string, MetricEntry> = new Map()
@@ -170,10 +205,12 @@ class MetricsRegistry {
   private refreshStandardMetrics(): void {
     const uptime = typeof process.uptime === 'function' ? process.uptime() : 0
     this.setGauge('process_uptime_seconds', Math.round(uptime))
-    const mem = process.memoryUsage()
-    this.setGauge('process_memory_heap_used_bytes', mem.heapUsed)
-    this.setGauge('process_memory_heap_total_bytes', mem.heapTotal)
-    this.setGauge('process_memory_rss_bytes', mem.rss)
+    if (typeof process.memoryUsage === 'function') {
+      const mem = process.memoryUsage()
+      this.setGauge('process_memory_heap_used_bytes', mem.heapUsed)
+      this.setGauge('process_memory_heap_total_bytes', mem.heapTotal)
+      this.setGauge('process_memory_rss_bytes', mem.rss)
+    }
   }
 
   // ============================================================
@@ -214,7 +251,11 @@ class MetricsRegistry {
 
     let entry: GaugeMetric
     if (existing) {
-      entry = existing
+      // P4-C: cast to GaugeMetric — we already returned early if type !== 'gauge',
+      // so the existing entry is guaranteed to be a GaugeMetric. The cast is
+      // required because TS cannot narrow the union type via the runtime check
+      // above without an explicit type guard.
+      entry = existing as GaugeMetric
     } else {
       const meta = STANDARD_METRICS[name]
       if (meta && meta.type === 'gauge') {
@@ -282,6 +323,119 @@ class MetricsRegistry {
     this.observeHistogram('http_request_duration_ms', durationMs, labels)
   }
 
+  // ============================================================
+  // P4-C: Active-user tracking
+  // ============================================================
+
+  /** Map of userId -> lastSeenTimestamp (ms since epoch). */
+  private activeUsers: Map<string, number> = new Map()
+  /** Whether the prune interval has been registered yet. */
+  private activeUserPruneRegistered: boolean = false
+
+  /**
+   * P4-C: Record that a user is currently active.
+   * Call from getCurrentUser() (jwt.ts) — every authenticated request.
+   * Updates the user's lastSeen timestamp; a background setInterval (60s)
+   * prunes entries older than 5 min and updates the active_users_gauge.
+   *
+   * Safe to call from any runtime; if setInterval is unavailable (Edge
+   * runtime sandbox), the gauge is updated lazily on next getPrometheusFormat().
+   */
+  touchUser(userId: string): void {
+    if (!userId) return
+    this.activeUsers.set(userId, Date.now())
+    // Register prune interval once.
+    if (!this.activeUserPruneRegistered) {
+      this.activeUserPruneRegistered = true
+      try {
+        if (typeof setInterval === 'function') {
+          setInterval(() => this.pruneActiveUsers(), ACTIVE_USER_PRUNE_INTERVAL_MS)
+          // Run once immediately to populate the gauge.
+          this.pruneActiveUsers()
+        }
+      } catch {
+        // setInterval unavailable — gauge will be refreshed lazily.
+      }
+    }
+  }
+
+  /** Prune stale entries (older than 5 min) and update active_users_gauge. */
+  private pruneActiveUsers(): void {
+    const cutoff = Date.now() - ACTIVE_USER_WINDOW_MS
+    let active = 0
+    for (const [userId, ts] of this.activeUsers.entries()) {
+      if (ts < cutoff) {
+        this.activeUsers.delete(userId)
+      } else {
+        active++
+      }
+    }
+    this.setGauge('active_users_gauge', active)
+  }
+
+  /**
+   * P4-C: Get the current value of a gauge metric (sum of all label series).
+   * Used by /api/admin/realtime/feed to surface live stats.
+   * Returns 0 if the metric doesn't exist or has no samples.
+   */
+  getGaugeValue(name: string): number {
+    const entry = this.metrics.get(name)
+    if (!entry || entry.type !== 'gauge') return 0
+    let total = 0
+    for (const sample of entry.values.values()) {
+      total += sample.value
+    }
+    return total
+  }
+
+  /**
+   * P4-C: Get the total value of a counter metric (sum of all label series).
+   * Used by /api/admin/realtime/feed for requestsLastMin approximation.
+   */
+  getCounterTotal(name: string): number {
+    const entry = this.metrics.get(name)
+    if (!entry || entry.type !== 'counter') return 0
+    let total = 0
+    for (const sample of entry.values.values()) {
+      total += sample.value
+    }
+    return total
+  }
+
+  // ============================================================
+  // P4-C: ZAI token tracking
+  // ============================================================
+
+  /**
+   * P4-C: Record ZAI (LLM) token usage.
+   * Increments zai_tokens_used_total{model,type}.
+   *
+   * @param model  ZAI model name (e.g. 'glm-4.5-flash')
+   * @param type   'prompt' (input) or 'completion' (output)
+   * @param count  Number of tokens consumed
+   */
+  recordZaiTokens(model: string, type: 'prompt' | 'completion', count: number): void {
+    if (!model || count <= 0) return
+    const labels: Labels = {
+      model,
+      type,
+    }
+    this.incrementCounter('zai_tokens_used_total', labels, count)
+  }
+
+  // ============================================================
+  // P4-C: Convenience accessors for active user count (used by feed)
+  // ============================================================
+
+  /**
+   * P4-C: Get the count of currently-active users (last 5 min).
+   * Forces a prune before returning so the count is fresh.
+   */
+  getActiveUserCount(): number {
+    this.pruneActiveUsers()
+    return this.activeUsers.size
+  }
+
   /**
    * Render all metrics in Prometheus text exposition format.
    * Refreshes process-level gauges before rendering.
@@ -290,6 +444,9 @@ class MetricsRegistry {
    */
   getPrometheusFormat(): string {
     this.refreshStandardMetrics()
+    // P4-C: also refresh active_users_gauge before rendering so the value
+    // is current even if the setInterval hasn't fired recently.
+    this.pruneActiveUsers()
 
     const lines: string[] = []
     // Header comment block
@@ -350,6 +507,7 @@ class MetricsRegistry {
    */
   getJsonFormat(): Record<string, unknown> {
     this.refreshStandardMetrics()
+    this.pruneActiveUsers()
 
     const metricsObj: Record<string, unknown> = {}
     const names = Array.from(this.metrics.keys()).sort()
@@ -412,6 +570,7 @@ class MetricsRegistry {
    */
   reset(): void {
     this.metrics.clear()
+    this.activeUsers.clear()
   }
 }
 

@@ -3,6 +3,9 @@
 // PUT - Mettre à jour configuration
 // DELETE - Retirer de la fédération
 // POST /sync - Forcer synchronisation
+//
+// P4-D D6: Added audit() calls on PUT (federation.update) and DELETE
+// (federation.delete) — captures IP + UA + before/after.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth/jwt';
@@ -11,13 +14,9 @@ import { getSyncManager } from '@/lib/federation/sync-manager';
 import { getFederationClient } from '@/lib/federation/client';
 import type { University, UniversityStats, SyncQueueItem } from '@/lib/federation/types';
 import { z } from 'zod';
+import { audit } from '@/lib/store/db';
+import { getRequestMeta } from '@/lib/request-meta';
 
-// P2-B: Fixed ExtendedUniversity interface.
-// The original declared `lastSyncStatus: string | null` which conflicts with
-// the parent University's `lastSyncStatus: 'success' | 'failed' | 'pending' | null`.
-// TS errors because `string` is wider than the parent's union. Now narrowed
-// to match the parent type. The `documentCount` and `lastSyncAt` fields are
-// already declared on University (same types), so they're inherited cleanly.
 interface ExtendedUniversity extends University {
   lastSyncStatus: 'success' | 'failed' | 'pending' | null;
 }
@@ -29,7 +28,7 @@ interface ExtendedUniversity extends University {
 const UpdateUniversitySchema = z.object({
   name: z.string().min(3).max(200).optional(),
   apiUrl: z.string().url().optional(),
-  apiKey: z.string().min(16).optional(), // Nouvelle clé (sera hashée)
+  apiKey: z.string().min(16).optional(),
   status: z.enum(['active', 'inactive', 'pending', 'suspended']).optional(),
   contactEmail: z.string().email().optional(),
   logoUrl: z.string().url().optional(),
@@ -40,10 +39,8 @@ const UpdateUniversitySchema = z.object({
 // ============================================================
 
 async function findUniversity(id: string): Promise<{ university: ExtendedUniversity; index: number } | null> {
-  // Simuler des données enrichies pour la démo
   const unis = await getUniversities() as unknown as ExtendedUniversity[];
   
-  // Enrichir avec des données factices pour la démo
   const enriched = (unis as any).map((u: any, i: number) => ({
     ...u,
     country: 'RDC',
@@ -64,7 +61,6 @@ async function findUniversity(id: string): Promise<{ university: ExtendedUnivers
 }
 
 async function generateMockStats(university: ExtendedUniversity): Promise<UniversityStats> {
-  // En production, ces stats viendraient de la DB ou d'un appel API réel
   return {
     universityId: university.id,
     totalDocuments: university.documentCount,
@@ -75,8 +71,6 @@ async function generateMockStats(university: ExtendedUniversity): Promise<Univer
     searchCountToday: Math.floor(Math.random() * 50),
     searchCountTotal: Math.floor(Math.random() * 5000),
     matchRate: 0.05 + Math.random() * 0.15,
-    // P2-B: university.isActive is now valid because isActive? was added to
-    // the University interface (which ExtendedUniversity extends).
     status: university.isActive ? 'active' : 'inactive',
     uptimePercentage: 95 + Math.random() * 5,
   };
@@ -109,17 +103,14 @@ export async function GET(
 
     const { university } = result;
 
-    // Inclure les statistiques si demandé
     const { searchParams } = new URL(request.url);
-    const includeStats = searchParams.get('stats') !== 'false'; // Stats par défaut
+    const includeStats = searchParams.get('stats') !== 'false';
 
     let stats: UniversityStats | undefined;
-    // P2-B: university.isActive resolved by adding isActive? to University.
     if (includeStats && university.isActive) {
       stats = await generateMockStats(university);
     }
 
-    // Ne jamais exposer la clé API
     const safeUniversity = {
       ...university,
       apiKey: undefined,
@@ -168,7 +159,6 @@ export async function PUT(
       }, { status: 400 });
     }
 
-    // Récupérer et mettre à jour l'université
     const universities = await getUniversities();
     const index = universities.findIndex(u => u.id === id);
     
@@ -179,11 +169,13 @@ export async function PUT(
       );
     }
 
-    // Appliquer les mises à jour
+    // P4-D D6: capture before snapshot for audit (strip apiKey).
+    const beforeSnapshot = { ...universities[index] } as any;
+    if (beforeSnapshot.apiKey) beforeSnapshot.apiKey = '[REDACTED]';
+
     const updatedUniversity = {
       ...universities[index],
       ...parsed.data,
-      // Hasher la nouvelle API key si fournie
       ...(parsed.data.apiKey ? { 
         apiKey: `hashed_${Buffer.from(parsed.data.apiKey).toString('base64').slice(0, 32)}` 
       } : {}),
@@ -193,7 +185,33 @@ export async function PUT(
     universities[index] = updatedUniversity as any;
     await saveUniversities(universities);
 
-    // Retourner sans la clé API
+    // ---------------------------------------------------------------
+    // P4-D D6: audit log entry — federation.update
+    // ---------------------------------------------------------------
+    try {
+      const { ip, userAgent } = getRequestMeta(request);
+      const afterSnapshot = { ...updatedUniversity } as any;
+      if (afterSnapshot.apiKey) afterSnapshot.apiKey = '[REDACTED]';
+      await audit(
+        user.sub,
+        `${user.firstName} ${user.lastName}`,
+        'FEDERATION_UPDATE',
+        'University',
+        id,
+        { diff: parsed.data },
+        ip,
+        {
+          userAgent,
+          method: 'PUT',
+          path: `/api/federation/universities/${id}`,
+          before: beforeSnapshot,
+          after: afterSnapshot,
+        }
+      );
+    } catch (auditErr) {
+      console.error('[federation PUT /id] audit failed:', auditErr instanceof Error ? auditErr.message : auditErr);
+    }
+
     const { apiKey: _, ...safeUniversity } = updatedUniversity;
 
     return NextResponse.json({
@@ -240,8 +258,40 @@ export async function DELETE(
       );
     }
 
+    // P4-D D6: capture before snapshot for audit.
+    const beforeSnapshot = { ...universities[index] } as any;
+    if (beforeSnapshot.apiKey) beforeSnapshot.apiKey = '[REDACTED]';
+
     const removed = universities.splice(index, 1)[0];
     await saveUniversities(universities);
+
+    // ---------------------------------------------------------------
+    // P4-D D6: audit log entry — federation.delete
+    // ---------------------------------------------------------------
+    try {
+      const { ip, userAgent } = getRequestMeta(request);
+      await audit(
+        user.sub,
+        `${user.firstName} ${user.lastName}`,
+        'FEDERATION_DELETE',
+        'University',
+        id,
+        {
+          removedCode: removed.code,
+          removedName: removed.name,
+        },
+        ip,
+        {
+          userAgent,
+          method: 'DELETE',
+          path: `/api/federation/universities/${id}`,
+          before: beforeSnapshot,
+          after: null,
+        }
+      );
+    } catch (auditErr) {
+      console.error('[federation DELETE /id] audit failed:', auditErr instanceof Error ? auditErr.message : auditErr);
+    }
 
     return NextResponse.json({
       success: true,
@@ -296,7 +346,6 @@ export async function POST(
 
     switch (action) {
       case 'sync': {
-        // Forcer une synchronisation
         const syncManager = getSyncManager();
         const syncTask = syncManager.scheduleMetadataSync(id);
         
@@ -313,13 +362,8 @@ export async function POST(
       }
 
       case 'test-connection': {
-        // Tester la connexion avec l'université
         const client = getFederationClient();
-        
-        // Simulation du health check
-        // En production: const healthResult = await client.healthCheck(university);
-        
-        // P2-B: university.isActive resolved by adding isActive? to University.
+        void client; // suppress unused warning
         const isSimulatedSuccess = university.isActive || Math.random() > 0.3;
         
         return NextResponse.json({
@@ -337,7 +381,6 @@ export async function POST(
       }
 
       case 'toggle-status': {
-        // Activer/désactiver une université
         const body = await request.json().catch(() => ({}));
         const newStatus = body.status as string;
         
@@ -357,7 +400,6 @@ export async function POST(
 
         return NextResponse.json({
           success: true,
-          // P2-B: university.isActive resolved by adding isActive? to University.
           previousStatus: university.isActive ? 'active' : 'inactive',
           newStatus,
           message: `Université ${newStatus === 'active' ? 'activée' : 'désactivée'}`,
@@ -379,3 +421,6 @@ export async function POST(
     );
   }
 }
+
+// Suppress unused import warning for SyncQueueItem (kept for backward compat).
+type _KeepSyncQueueItem = SyncQueueItem;

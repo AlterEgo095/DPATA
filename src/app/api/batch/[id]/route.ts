@@ -2,10 +2,14 @@
 // DELETE /api/batch/[id] - Annuler un job
 // GET /api/batch/[id]/results - Résultats complets
 // GET /api/batch/[id]/export - Export CSV du batch
+//
+// P4-D D6: Added audit() call on DELETE (batch.cancel) — captures IP + UA +
+// before snapshot of the cancelled job.
+
 import { NextRequest, NextResponse } from 'next/server';
 import { batchManager } from '@/lib/batch/batch-manager';
 import { getCurrentUser } from '@/lib/auth/jwt';
-import { loadDB, saveDB } from '@/lib/store/db';
+import { loadDB, saveDB, audit } from '@/lib/store/db';
 import { 
   exportToCSV, 
   exportStatsToCSV, 
@@ -14,6 +18,7 @@ import {
 } from '@/lib/batch/report-generator';
 import type { BatchSummary } from '@/lib/batch/types';
 import { logger } from '@/lib/logger';
+import { getRequestMeta } from '@/lib/request-meta';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -34,7 +39,6 @@ export async function GET(req: NextRequest, context: RouteContext) {
     const { searchParams } = new URL(req.url);
     const action = searchParams.get('action');
 
-    // Récupérer le job depuis le store
     const db = await loadDB();
     const batchJobs = db.batchJobs || [];
     const jobRecord = batchJobs.find((j: any) => j.id === id);
@@ -43,17 +47,14 @@ export async function GET(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Job non trouvé' }, { status: 404 });
     }
 
-    // Action: results - Résultats détaillés
     if (action === 'results') {
       return handleGetResults(jobRecord);
     }
 
-    // Action: export - Export CSV
     if (action === 'export') {
       return handleExport(jobRecord, searchParams.get('format') || 'csv');
     }
 
-    // Détails par défaut
     let config = {};
     let results = [];
     try { config = JSON.parse(jobRecord.config || '{}'); } catch {}
@@ -61,10 +62,6 @@ export async function GET(req: NextRequest, context: RouteContext) {
 
     const creator = db.users.find(u => u.id === jobRecord.createdBy);
 
-    // Calculer les stats si complété
-    // P2-B: Fixed `stats` type. `let stats = null` inferred type `null` which
-    // cannot accept the BatchJobStats returned by calculateBatchStats. Now
-    // explicitly typed as the return type of calculateBatchStats (or null).
     let stats: ReturnType<typeof calculateBatchStats> | null = null;
     if (jobRecord.status === 'completed' && results.length > 0) {
       stats = calculateBatchStats(results);
@@ -110,11 +107,18 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
 
     const { id } = await context.params;
 
-    // Essayer d'annuler via le manager (si actif en mémoire)
+    // P4-D D6: capture before snapshot for audit (best-effort — may be null
+    // if the job is in-memory only and not in the DB store).
+    let beforeSnapshot: any = null;
+    try {
+      const dbSnap = await loadDB();
+      const rec = (dbSnap.batchJobs || []).find((j: any) => j.id === id);
+      if (rec) beforeSnapshot = { ...rec };
+    } catch {}
+
     try {
       await batchManager.cancelJob(id, user.sub);
     } catch (e: any) {
-      // Si pas en mémoire, mettre à jour directement dans le store
       const db = await loadDB();
       const batchJobs = db.batchJobs || [];
       const jobIndex = batchJobs.findIndex((j: any) => j.id === id);
@@ -138,13 +142,35 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
         updatedAt: new Date().toISOString(),
       };
       
-      // P2-B: Fixed missing saveDB import. saveDB is exported from
-      // @/lib/store/db but was not imported in this file. Added to the
-      // import statement at the top.
       await saveDB(db);
     }
 
     logger.info('Batch job cancelled', { jobId: id, userId: user.sub });
+
+    // ---------------------------------------------------------------
+    // P4-D D6: audit log entry — batch.cancel
+    // ---------------------------------------------------------------
+    try {
+      const { ip, userAgent } = getRequestMeta(req);
+      await audit(
+        user.sub,
+        `${user.firstName} ${user.lastName}`,
+        'BATCH_CANCEL',
+        'BatchJob',
+        id,
+        {},
+        ip,
+        {
+          userAgent,
+          method: 'DELETE',
+          path: `/api/batch/${id}`,
+          before: beforeSnapshot,
+          after: beforeSnapshot ? { ...beforeSnapshot, status: 'cancelled' } : null,
+        }
+      );
+    } catch (auditErr) {
+      console.error('[batch DELETE] audit failed:', auditErr instanceof Error ? auditErr.message : auditErr);
+    }
 
     return NextResponse.json({
       success: true,
@@ -176,7 +202,6 @@ async function handleGetResults(jobRecord: any): Promise<NextResponse> {
   try { results = JSON.parse(jobRecord.results || '[]'); } catch {}
   try { config = JSON.parse(jobRecord.config || '{}'); } catch {}
 
-  // Générer le rapport complet
   const summary: BatchSummary = {
     jobId: jobRecord.id,
     jobName: jobRecord.name,
@@ -227,7 +252,6 @@ async function handleExport(jobRecord: any, format: string): Promise<NextRespons
     });
   }
 
-  // CSV par défaut
   const csvContent = exportToCSV(results);
   const statsCsv = exportStatsToCSV(calculateBatchStats(results), jobRecord.name);
   const fullCsv = `# Rapport Batch: ${jobRecord.name}\n# Généré le: ${new Date().toISOString()}\n\n## Statistiques\n${statsCsv}\n\n## Résultats Détaillés\n${csvContent}\n`;

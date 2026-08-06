@@ -1,12 +1,16 @@
 // POST /api/suggestions/check
 // Vérifie l'originalité d'un sujet de mémoire proposé
 // 🔒 SÉCURITÉ: Validation Zod + gestion d'erreurs complète
+//
+// P4-D D6: Added audit() call (suggestion.check) — captures IP + UA + result.
+
 import { NextRequest, NextResponse } from 'next/server';
-import { loadDB } from '@/lib/store/db';
+import { loadDB, audit } from '@/lib/store/db';
 import { getCurrentUser } from '@/lib/auth/jwt';
 import { detectPlagiat } from '@/lib/ia/engine';
 import { sanitizeError, getSecurityHeaders } from '@/lib/security';
 import { z } from 'zod';
+import { getRequestMeta } from '@/lib/request-meta';
 
 const Schema = z.object({
   subject: z.string().min(10, 'Le sujet doit faire au moins 10 caractères'),
@@ -35,7 +39,6 @@ export async function POST(req: NextRequest) {
     const { subject, departmentId } = parsed.data;
     const db = await loadDB();
 
-    // Corpus : tous les documents du même département (ou tous si pas de filtre)
     let corpusDocs = db.documents.filter(d => d.textExtract || d.subject);
     if (departmentId) {
       corpusDocs = corpusDocs.filter(d => d.departmentId === departmentId);
@@ -46,10 +49,8 @@ export async function POST(req: NextRequest) {
       text: `${d.title}. ${d.subject || ''} ${d.textExtract?.slice(0, 500) || ''}`,
     }));
 
-    // Texte à analyser : le sujet proposé
     const result = detectPlagiat(subject, corpus, 0.10);
 
-    // Identifier les sujets les plus proches
     const similarSubjects = result.matches.map(m => {
       const doc = db.documents.find(d => d.id === m.sourceDocumentId);
       const score = m.semanticScore;
@@ -68,6 +69,31 @@ export async function POST(req: NextRequest) {
     });
 
     const isOriginal = result.globalScore < 0.15;
+
+    // ---------------------------------------------------------------
+    // P4-D D6: audit log entry — suggestion.check
+    // ---------------------------------------------------------------
+    try {
+      const { ip, userAgent } = getRequestMeta(req);
+      await audit(
+        user.sub,
+        `${user.firstName} ${user.lastName}`,
+        'SUGGESTION_CHECK',
+        'SubjectValidation',
+        undefined,
+        {
+          subjectPreview: String(subject).slice(0, 200),
+          globalScore: result.globalScore,
+          isOriginal,
+          totalChecked: corpus.length,
+          topMatchScore: similarSubjects[0]?.similarity || 0,
+        },
+        ip,
+        { userAgent, method: 'POST', path: '/api/suggestions/check' }
+      );
+    } catch (auditErr) {
+      console.error('[suggestions/check] audit failed:', auditErr instanceof Error ? auditErr.message : auditErr);
+    }
 
     return NextResponse.json({
       subject,

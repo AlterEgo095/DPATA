@@ -1,7 +1,11 @@
 // /api/admin/kb/export — Export knowledge base
+//
+// P4-D D6: Added audit() call (kb.export) — captures IP + UA + record count.
+
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth/jwt';
-import { loadDB } from '@/lib/store/db';
+import { loadDB, audit } from '@/lib/store/db';
+import { getRequestMeta } from '@/lib/request-meta';
 
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
@@ -9,7 +13,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Accès non autorisé' }, { status: 403 });
   }
   const db = await loadDB();
-  // P2-B: Fixed db.subjects -> db.academicSubjects (DB schema uses academicSubjects)
   const subjects = (db.academicSubjects || []).map((s: any) => ({
     title: s.title,
     description: s.description,
@@ -26,6 +29,26 @@ export async function GET(req: NextRequest) {
     createdAt: s.createdAt,
   }));
   const format = new URL(req.url).searchParams.get('format') || 'json';
+
+  // ---------------------------------------------------------------
+  // P4-D D6: audit log entry — kb.export
+  // ---------------------------------------------------------------
+  try {
+    const { ip, userAgent } = getRequestMeta(req);
+    await audit(
+      user.sub,
+      `${user.firstName} ${user.lastName}`,
+      'KB_EXPORT',
+      'AcademicSubject',
+      undefined,
+      { format, recordCount: subjects.length },
+      ip,
+      { userAgent, method: 'GET', path: '/api/admin/kb/export' }
+    );
+  } catch (auditErr) {
+    console.error('[admin/kb/export] audit failed:', auditErr instanceof Error ? auditErr.message : auditErr);
+  }
+
   if (format === 'csv') {
     const headers = Object.keys(subjects[0] || {}).join(',');
     const rows = subjects.map(s => Object.values(s).map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');

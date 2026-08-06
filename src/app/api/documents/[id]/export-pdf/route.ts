@@ -14,6 +14,8 @@ import {
   type ReportFormat,
   type ReportLanguage,
 } from '@/lib/pdf/generator';
+import { audit } from '@/lib/store/db';
+import { getRequestMeta } from '@/lib/request-meta';
 
 // ============================================================
 // TYPES
@@ -237,6 +239,32 @@ export async function GET(
     // 7. Log success
     const processingTime = Date.now() - startTime;
     console.log(`[PDF_EXPORT] Success: ${filename}, size=${(pdfBuffer.length / 1024).toFixed(1)}KB, time=${processingTime}ms`);
+
+    // ---------------------------------------------------------------
+    // P4-D D6: audit log entry — document.export_pdf
+    // ---------------------------------------------------------------
+    try {
+      const { ip, userAgent } = getRequestMeta(req);
+      await audit(
+        user.sub,
+        `${user.firstName} ${user.lastName}`,
+        'DOCUMENT_EXPORT_PDF',
+        'Document',
+        id,
+        {
+          documentTitle: doc.title,
+          format,
+          language,
+          fileSize: pdfBuffer.length,
+          processingTimeMs: processingTime,
+          analysisId: analysis?.id,
+        },
+        ip,
+        { userAgent, method: 'GET', path: `/api/documents/${id}/export-pdf` }
+      );
+    } catch (auditErr) {
+      console.error('[PDF_EXPORT] audit failed:', auditErr instanceof Error ? auditErr.message : auditErr);
+    }
 
     // 8. Return PDF response
     // P2-B: Cast pdfBuffer (Buffer) to BodyInit. The NextResponse constructor

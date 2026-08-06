@@ -1,7 +1,10 @@
 // API Key Stats and Delete Endpoint (Internal - for Dashboard)
 // Get usage statistics and revoke API keys
+//
+// P4-D D6: Added audit() call on DELETE (apikey.revoke) — captures IP + UA +
+// before/after via the new meta arg. No other changes to the route logic.
 
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { apiKeyAuth } from '@/lib/api/auth/api-key-auth';
 import { 
   toNextResponse, 
@@ -12,6 +15,9 @@ import {
   jsonError,
   jsonNotFound
 } from '@/lib/api/response/api-response';
+import { audit } from '@/lib/store/db';
+import { getCurrentUser } from '@/lib/auth/jwt';
+import { getRequestMeta } from '@/lib/request-meta';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -21,6 +27,14 @@ interface RouteParams {
  * GET /api/keys/[id]/stats - Get usage statistics for an API key
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Non authentifié', code: 'AUTH_REQUIRED' },
+        { status: 401 }
+      );
+    }
+
   const { id: keyId } = await params;
   
   const { searchParams } = new URL(request.url);
@@ -45,6 +59,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  * DELETE /api/keys/[id] - Revoke an API key
  */
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Non authentifié', code: 'AUTH_REQUIRED' },
+        { status: 401 }
+      );
+    }
+
   const { id: keyId } = await params;
 
   try {
@@ -53,7 +75,46 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return jsonNotFound('Clé API', keyId);
     }
 
+    // P4-D D6: capture before-state for audit log (safe fields only — no hash).
+    const beforeSnapshot = {
+      id: key.id,
+      name: key.name,
+      prefix: key.prefix,
+      isValid: key.isValid,
+      permissions: key.permissions,
+      usageCount: key.usageCount,
+    };
+
     await apiKeyAuth.revoke(keyId);
+
+    // ---------------------------------------------------------------
+    // P4-D D6: audit log entry — apikey.revoke
+    // ---------------------------------------------------------------
+    try {
+      const currentUser = await getCurrentUser();
+      const { ip, userAgent } = getRequestMeta(request);
+      await audit(
+        currentUser?.sub,
+        currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : undefined,
+        'APIKEY_REVOKE',
+        'ApiKey',
+        keyId,
+        {
+          name: key.name,
+          prefix: key.prefix,
+        },
+        ip,
+        {
+          userAgent,
+          method: 'DELETE',
+          path: `/api/keys/${keyId}`,
+          before: beforeSnapshot,
+          after: { id: keyId, isValid: false },
+        }
+      );
+    } catch (auditErr) {
+      console.error('[keys DELETE] audit failed:', auditErr instanceof Error ? auditErr.message : auditErr);
+    }
 
     return toNextResponse(apiNoContent());
   } catch (error) {

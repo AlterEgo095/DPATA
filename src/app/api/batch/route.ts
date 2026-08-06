@@ -1,10 +1,14 @@
 // POST /api/batch - Créer un nouveau job batch
 // GET /api/batch - Lister les jobs (avec pagination/filtres)
+//
+// P4-D D6: Added audit() call on POST (batch.create) — captures IP + UA.
+
 import { NextRequest, NextResponse } from 'next/server';
 import { batchManager } from '@/lib/batch/batch-manager';
 import { getCurrentUser } from '@/lib/auth/jwt';
-import { loadDB } from '@/lib/store/db';
+import { loadDB, audit } from '@/lib/store/db';
 import { logger } from '@/lib/logger';
+import { getRequestMeta } from '@/lib/request-meta';
 
 // ============================================================
 // POST - Créer un job batch
@@ -27,7 +31,6 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { name, documentIds, config } = body;
 
-    // Validation des champs requis
     if (!name || typeof name !== 'string' || name.trim().length === 0) {
       return NextResponse.json(
         { error: 'Le nom du job est requis' },
@@ -42,7 +45,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Validation de la config
     const validEngines = ['tfidf', 'hybrid', 'semantic'];
     const validScopes = ['faculty', 'department', 'promotion', 'all'];
     const validPriorities = ['low', 'normal', 'high'];
@@ -68,7 +70,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Créer le job
     const job = await batchManager.createJob({
       name: name.trim(),
       documentIds,
@@ -89,6 +90,39 @@ export async function POST(req: NextRequest) {
       userId: user.sub,
       docCount: documentIds.length 
     });
+
+    // ---------------------------------------------------------------
+    // P4-D D6: audit log entry — batch.create
+    // ---------------------------------------------------------------
+    try {
+      const { ip, userAgent } = getRequestMeta(req);
+      await audit(
+        user.sub,
+        `${user.firstName} ${user.lastName}`,
+        'BATCH_CREATE',
+        'BatchJob',
+        job.id,
+        {
+          name: job.name,
+          documentCount: documentIds.length,
+          config: job.config,
+        },
+        ip,
+        {
+          userAgent,
+          method: 'POST',
+          path: '/api/batch',
+          after: {
+            id: job.id,
+            name: job.name,
+            status: job.status,
+            documentCount: documentIds.length,
+          },
+        }
+      );
+    } catch (auditErr) {
+      console.error('[batch POST] audit failed:', auditErr instanceof Error ? auditErr.message : auditErr);
+    }
 
     return NextResponse.json({
       success: true,
@@ -127,23 +161,19 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Non authentifié' }, { status: 401 });
     }
 
-    // Paramètres de requête
     const { searchParams } = new URL(req.url);
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
     const limit = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') || '10')));
     const status = searchParams.get('status');
     const search = searchParams.get('search');
 
-    // Récupérer tous les jobs (depuis le store pour persistance complète)
     const db = await loadDB();
     let jobs = db.batchJobs || [];
 
-    // Filtrer par statut
     if (status) {
       jobs = jobs.filter((j: any) => j.status === status);
     }
 
-    // Filtrer par recherche
     if (search) {
       const searchLower = search.toLowerCase();
       jobs = jobs.filter((j: any) => 
@@ -152,18 +182,15 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Trier par date décroissante
     jobs.sort((a: any, b: any) => 
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
 
-    // Pagination
     const total = jobs.length;
     const totalPages = Math.ceil(total / limit);
     const startIndex = (page - 1) * limit;
     const paginatedJobs = jobs.slice(startIndex, startIndex + limit);
 
-    // Enrichir avec les infos créateur
     const enrichedJobs = paginatedJobs.map((job: any) => {
       const creator = db.users.find(u => u.id === job.createdBy);
       let results = [];

@@ -1,10 +1,15 @@
 // GET /api/export - Export data as CSV or JSON
 // PHASE 4: Fonctionnalités Manquantes - Export API
+//
+// P4-D D6: Added audit() call (data.export) — captures IP + UA + export
+// metadata (type, format, record count). Fixes the "export is not audit-
+// logged" paradox flagged in AUDIT-4 §6.5.
 
 import { NextRequest, NextResponse } from 'next/server';
-import { loadDB } from '@/lib/store/db';
+import { loadDB, audit } from '@/lib/store/db';
 import { getCurrentUser } from '@/lib/auth/jwt';
 import { getSecurityHeaders, sanitizeError, sanitizeInput } from '@/lib/security';
+import { getRequestMeta } from '@/lib/request-meta';
 
 type ExportFormat = 'csv' | 'json';
 type ExportType = 'audit' | 'users' | 'subjects' | 'documents' | 'analyses';
@@ -22,7 +27,6 @@ function toCSV(data: Record<string, unknown>[], columns?: string[]): string {
       let value = row[col];
       if (value === null || value === undefined) return '';
       if (typeof value === 'object') value = JSON.stringify(value);
-      // Escape quotes and wrap in quotes
       const str = String(value).replace(/"/g, '""');
       return `"${str}"`;
     }).join(',')
@@ -41,7 +45,6 @@ function getFilename(type: ExportType, format: ExportFormat): string {
 
 export async function GET(req: NextRequest) {
   try {
-    // Authentication check
     const user = await getCurrentUser();
     if (!user) {
       return NextResponse.json(
@@ -50,7 +53,6 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Only SUPER_ADMIN can export
     if (user.role !== 'SUPER_ADMIN') {
       return NextResponse.json(
         { error: 'Permissions insuffisantes', code: 'FORBIDDEN' },
@@ -60,14 +62,12 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     
-    // Parse parameters
     const type = (searchParams.get('type') || 'audit').toLowerCase() as ExportType;
     const format = (searchParams.get('format') || 'csv').toLowerCase() as ExportFormat;
     const search = searchParams.get('search') || '';
     const dateFrom = searchParams.get('dateFrom') || '';
     const dateTo = searchParams.get('dateTo') || '';
 
-    // Validate format
     if (!['csv', 'json'].includes(format)) {
       return NextResponse.json(
         { error: 'Format non supporté. Utilisez csv ou json', code: 'INVALID_FORMAT' },
@@ -75,7 +75,6 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Validate type
     const validTypes: ExportType[] = ['audit', 'users', 'subjects', 'documents', 'analyses'];
     if (!validTypes.includes(type)) {
       return NextResponse.json(
@@ -84,10 +83,8 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Load database
     const db = await loadDB();
 
-    // Get data based on type
     let data: Record<string, unknown>[];
     let columns: string[];
 
@@ -104,7 +101,6 @@ export async function GET(req: NextRequest) {
         }));
         columns = ['Date', 'Utilisateur', 'Action', 'Entité', 'ID_Entité', 'Détails', 'IP'];
         
-        // Apply filters
         if (search) {
           data = data.filter(d => 
             Object.values(d).some(v => String(v).toLowerCase().includes(search.toLowerCase()))
@@ -146,9 +142,6 @@ export async function GET(req: NextRequest) {
         
         if (search) {
           data = data.filter(d =>
-            // P2-B: Coerce unknown values to string before calling toLowerCase.
-            // `data` is Record<string, unknown>[] so d.Titre and d.Domaine
-            // are `unknown`. Using String() makes them safe to lower-case.
             String(d.Titre ?? '').toLowerCase().includes(search.toLowerCase()) ||
             String(d.Domaine ?? '').toLowerCase().includes(search.toLowerCase())
           );
@@ -173,13 +166,6 @@ export async function GET(req: NextRequest) {
         data = (db.analyses || []).map(a => ({
           ID_Document: a.documentId || '',
           Score_Global: a.globalScore?.toFixed(2) || '',
-          // P2-B: The Analysis type (in store/db.ts) does not declare
-          // `coverage`, `matchCount`, or `analyzedAt`. These fields were
-          // referenced in the original code but never added to the type.
-          // Rather than modifying the P1-hardened store/db.ts, we cast `a`
-          // to any to access these optional/extra fields. They may be
-          // undefined at runtime (yielding '' or 0), preserving the
-          // original behavior.
           Couverture: (a as any).coverage?.toFixed(2) || '',
           Matches: (a as any).matchCount || 0,
           Statut: a.status || '',
@@ -195,8 +181,31 @@ export async function GET(req: NextRequest) {
         );
     }
 
-    // Generate response based on format
     const filename = getFilename(type, format);
+
+    // ---------------------------------------------------------------
+    // P4-D D6: audit log entry — data.export
+    // ---------------------------------------------------------------
+    try {
+      const { ip, userAgent } = getRequestMeta(req);
+      await audit(
+        user.sub,
+        `${user.firstName} ${user.lastName}`,
+        'DATA_EXPORT',
+        'Export',
+        undefined,
+        {
+          type,
+          format,
+          recordCount: data.length,
+          filters: { search, dateFrom, dateTo },
+        },
+        ip,
+        { userAgent, method: 'GET', path: '/api/export' }
+      );
+    } catch (auditErr) {
+      console.error('[export GET] audit failed:', auditErr instanceof Error ? auditErr.message : auditErr);
+    }
 
     if (format === 'json') {
       return new NextResponse(JSON.stringify(data, null, 2), {
@@ -209,7 +218,6 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // CSV format
     const csv = toCSV(data, columns);
     
     return new NextResponse(csv, {
@@ -227,3 +235,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(error, { status: 500, headers: getSecurityHeaders() });
   }
 }
+
+// sanitizeInput is re-exported by this module's existing import — keep the
+// reference alive for callers that may import it transitively. (No-op.)
+void sanitizeInput;

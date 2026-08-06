@@ -1,14 +1,18 @@
 // POST /api/ocr - Extract text from images using OCR
 // PHASE 4: Fonctionnalités Manquantes - OCR API
+//
+// P4-D D6: Added audit() call (ocr.process) — captures IP + UA + result
+// metadata (text length, confidence, language). No PII in the audit entry.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth/jwt';
 import { getSecurityHeaders, sanitizeError } from '@/lib/security';
 import { extractTextFromImage, assessQuality, cleanExtractedText } from '@/lib/ocr';
+import { audit } from '@/lib/store/db';
+import { getRequestMeta } from '@/lib/request-meta';
 
 export async function POST(req: NextRequest) {
   try {
-    // Authentication check
     const user = await getCurrentUser();
     if (!user) {
       return NextResponse.json(
@@ -17,13 +21,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check content type
+    const { ip, userAgent } = getRequestMeta(req);
+
     const contentType = req.headers.get('content-type') || '';
     
     let imageBuffer: Buffer;
+    let inputMeta: { sourceType: string; mimeType?: string; sizeBytes?: number } = {
+      sourceType: 'unknown',
+    };
     
     if (contentType.includes('multipart/form-data')) {
-      // File upload
       const formData = await req.formData();
       const file = formData.get('image') as File | null;
       
@@ -34,7 +41,6 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // Validate file type
       const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/bmp', 'image/webp'];
       if (!allowedTypes.includes(file.type)) {
         return NextResponse.json(
@@ -47,7 +53,6 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // Validate file size (max 10MB)
       if (file.size > 10 * 1024 * 1024) {
         return NextResponse.json(
           { error: 'Image trop volumineuse (max 10MB)', code: 'FILE_TOO_LARGE' },
@@ -57,9 +62,9 @@ export async function POST(req: NextRequest) {
 
       const arrayBuffer = await file.arrayBuffer();
       imageBuffer = Buffer.from(arrayBuffer);
+      inputMeta = { sourceType: 'multipart', mimeType: file.type, sizeBytes: file.size };
       
     } else if (contentType.includes('application/json')) {
-      // Base64 encoded image
       const body = await req.json();
       const { imageData, mimeType } = body;
       
@@ -70,9 +75,9 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // Remove data URL prefix if present
       const base64Data = imageData.replace(/^data:image\/.+;base64,/, '');
       imageBuffer = Buffer.from(base64Data, 'base64');
+      inputMeta = { sourceType: 'base64', mimeType: mimeType || 'unknown', sizeBytes: imageBuffer.length };
       
     } else {
       return NextResponse.json(
@@ -81,14 +86,37 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Perform OCR
     const ocrResult = await extractTextFromImage(imageBuffer);
-    
-    // Clean the extracted text
     const cleanedText = cleanExtractedText(ocrResult.text);
-    
-    // Assess quality
     const quality = assessQuality(ocrResult);
+
+    // ---------------------------------------------------------------
+    // P4-D D6: audit log entry — ocr.process
+    // ---------------------------------------------------------------
+    try {
+      await audit(
+        user.sub,
+        `${user.firstName} ${user.lastName}`,
+        'OCR_PROCESS',
+        'OCR',
+        undefined,
+        {
+          inputSource: inputMeta.sourceType,
+          inputMime: inputMeta.mimeType,
+          inputSize: inputMeta.sizeBytes,
+          textLength: cleanedText.length,
+          wordCount: ocrResult.words.length,
+          confidence: Math.round(ocrResult.confidence * 100) / 100,
+          language: ocrResult.language,
+          processingTimeMs: ocrResult.processingTime,
+          qualityLevel: (quality as any)?.level || 'unknown',
+        },
+        ip,
+        { userAgent, method: 'POST', path: '/api/ocr' }
+      );
+    } catch (auditErr) {
+      console.error('[OCR] audit failed:', auditErr instanceof Error ? auditErr.message : auditErr);
+    }
 
     return NextResponse.json({
       success: true,

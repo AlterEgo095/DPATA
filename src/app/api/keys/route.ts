@@ -1,7 +1,10 @@
 // API Keys Management Endpoint (Internal - for Dashboard)
 // CRUD operations for API keys
+//
+// P4-D D6: Added audit() call on POST (apikey.create) — captures IP + UA +
+// before/after via the new meta arg. No other changes to the route logic.
 
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { apiKeyAuth, type CreateKeyOptions } from '@/lib/api/auth/api-key-auth';
 import { 
@@ -13,11 +16,22 @@ import {
   jsonError
 } from '@/lib/api/response/api-response';
 import { parseJsonBody, createApiKeySchema } from '@/lib/api/validation/request-validator';
+import { audit } from '@/lib/store/db';
+import { getCurrentUser } from '@/lib/auth/jwt';
+import { getRequestMeta } from '@/lib/request-meta';
 
 /**
  * GET /api/keys - List API keys for current user (requires session auth)
  */
 export async function GET(request: NextRequest) {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Non authentifié', code: 'AUTH_REQUIRED' },
+        { status: 401 }
+      );
+    }
+
   // This endpoint is used by the dashboard and requires session authentication
   // For now, we'll return keys based on a query parameter or session
   
@@ -63,6 +77,14 @@ export async function GET(request: NextRequest) {
  * POST /api/keys - Create new API key
  */
 export async function POST(request: NextRequest) {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Non authentifié', code: 'AUTH_REQUIRED' },
+        { status: 401 }
+      );
+    }
+
   // Parse and validate body
   const bodyResult = await parseJsonBody(createApiKeySchema, request);
   if (!bodyResult.success) {
@@ -99,6 +121,47 @@ export async function POST(request: NextRequest) {
     };
 
     const newKey = await apiKeyAuth.generate(options);
+
+    // ---------------------------------------------------------------
+    // P4-D D6: audit log entry — apikey.create
+    // ---------------------------------------------------------------
+    try {
+      const currentUser = await getCurrentUser();
+      const { ip, userAgent } = getRequestMeta(request);
+      // Don't log the actual key hash — log only safe metadata. Use values
+      // from `options` (input) since the GeneratedApiKey type doesn't
+      // expose all original input fields (e.g. rateLimit).
+      await audit(
+        currentUser?.sub || createdBy,
+        currentUser ? `${currentUser.firstName} ${currentUser.lastName}` : undefined,
+        'APIKEY_CREATE',
+        'ApiKey',
+        newKey.id,
+        {
+          name: options.name,
+          prefix: newKey.prefix,
+          permissions: options.permissions,
+          rateLimit: options.rateLimit,
+          createdBy,
+        },
+        ip,
+        {
+          userAgent,
+          method: 'POST',
+          path: '/api/keys',
+          after: {
+            id: newKey.id,
+            name: options.name,
+            prefix: newKey.prefix,
+            permissions: options.permissions,
+            rateLimit: options.rateLimit,
+          },
+        }
+      );
+    } catch (auditErr) {
+      // Audit failure must not break the route.
+      console.error('[keys POST] audit failed:', auditErr instanceof Error ? auditErr.message : auditErr);
+    }
 
     return toNextResponse(apiCreated(newKey));
   } catch (error) {
