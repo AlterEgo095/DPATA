@@ -177,6 +177,35 @@ export interface SubjectValidation {
   completedAt?: string;
 }
 
+
+// P1: API Keys (migrated from Prisma to JSON store)
+export interface ApiKeyRecord {
+  id: string;
+  name: string;
+  keyHash: string;
+  prefix: string;
+  permissions: string;
+  rateLimit: number;
+  ipWhitelist: string | null;
+  isValid: boolean;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+  usageCount: number;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface ApiAccessLogRecord {
+  id: string;
+  apiKeyId: string;
+  method: string;
+  path: string;
+  statusCode: number;
+  responseTimeMs: number;
+  ipAddress: string;
+  createdAt: string;
+}
+
 export interface DB {
   faculties: Faculty[];
   departments: Department[];
@@ -190,6 +219,8 @@ export interface DB {
   subjectValidations: SubjectValidation[];
   batchJobs?: BatchJobRecord[]; // Analyses groupées
   settings: Record<string, string>;
+  apiKeys: ApiKeyRecord[];
+  apiAccessLogs: ApiAccessLogRecord[];
 }
 
 export interface BatchJobRecord {
@@ -239,7 +270,9 @@ const DEFAULT_DB: DB = {
   auditLogs: [],
   academicSubjects: [],
   subjectValidations: [],
-  batchJobs: [], // Analyses groupées
+  batchJobs: [],
+  apiKeys: [],
+  apiAccessLogs: [], // Analyses groupées
   settings: {
     'ia.threshold': '0.80',
     'ia.model': 'distiluse-base-multilingual-cased-v1',
@@ -326,6 +359,7 @@ export async function audit(
   });
   // Garde les 1000 derniers logs
   if (db.auditLogs.length > 1000) db.auditLogs = db.auditLogs.slice(0, 1000);
+  if (db.apiAccessLogs && db.apiAccessLogs.length > 5000) db.apiAccessLogs = db.apiAccessLogs.slice(0, 5000);
   await saveDB(db);
 }
 

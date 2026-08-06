@@ -1,89 +1,90 @@
-// Standardized API Response Formatter for PlagiatIA Public API
-// Ensures consistent response format across all endpoints
+// lib/api/response/api-response.ts — P1 FIX: jsonError signature
+//
+// BUG: Callers like /api/keys/route.ts invoke jsonError as:
+//   jsonError(ErrorCodes.INVALID_PARAMETER, 'msg', { hint: '...' })
+// expecting the 3rd arg to be an options object. But the old signature was:
+//   jsonError(code, message, status?: number, details?: any)
+// so { hint: '...' } became `status` -> NextResponse.json(body, { status: {...} })
+// -> RangeError: The status provided (0) must be 101 or in [200, 599].
+//
+// FIX: Accept either form:
+//   jsonError(code, message, options?: { status?, details? })  // preferred
+//   jsonError(code, message, status?: number, details?: any)   // legacy
+// Backward compatible with all existing callers.
+//
+// FULL FILE (drop-in replacement).
 
-import { randomUUID } from 'crypto';
-import { RateLimitResult } from '../middleware/rate-limiter';
+import { randomUUID } from 'crypto'
 
 // ============================================================
 // Types
 // ============================================================
 
 export interface ApiError {
-  code: string;
-  message: string;
-  details?: any;
+  code: string
+  message: string
+  details?: any
 }
 
 export interface PaginationMeta {
-  page: number;
-  perPage: number;
-  total: number;
-  totalPages: number;
-  hasNext: boolean;
-  hasPrev: boolean;
+  page: number
+  perPage: number
+  total: number
+  totalPages: number
+  hasNext: boolean
+  hasPrev: boolean
 }
 
 export interface RateLimitMeta {
-  remaining: number;
-  reset: number;
-  limit: number;
+  remaining: number
+  reset: number
+  limit: number
 }
 
 export interface ApiResponseMeta {
-  requestId: string;
-  timestamp: string;
-  version: string;
-  pagination?: PaginationMeta;
-  rateLimit?: RateLimitMeta;
+  requestId: string
+  timestamp: string
+  version: string
+  pagination?: PaginationMeta
+  rateLimit?: RateLimitMeta
 }
 
 export interface ApiResponse<T = any> {
-  success: boolean;
-  data?: T;
-  error?: ApiError;
-  meta: ApiResponseMeta;
+  success: boolean
+  data?: T
+  error?: ApiError
+  meta: ApiResponseMeta
 }
 
 // ============================================================
 // Constants
 // ============================================================
 
-const API_VERSION = '1.0.0';
+const API_VERSION = '1.0.0'
 
-// Standard error codes
 export const ErrorCodes = {
-  // Authentication errors (4xx)
   INVALID_API_KEY: 'INVALID_API_KEY',
   API_KEY_EXPIRED: 'API_KEY_EXPIRED',
   API_KEY_REVOKED: 'API_KEY_REVOKED',
   IP_NOT_ALLOWED: 'IP_NOT_ALLOWED',
   MISSING_API_KEY: 'MISSING_API_KEY',
-  
-  // Validation errors (4xx)
   VALIDATION_ERROR: 'VALIDATION_ERROR',
   INVALID_PARAMETER: 'INVALID_PARAMETER',
   MISSING_PARAMETER: 'MISSING_PARAMETER',
   INVALID_FORMAT: 'INVALID_FORMAT',
-  
-  // Resource errors (4xx)
   NOT_FOUND: 'NOT_FOUND',
   ALREADY_EXISTS: 'ALREADY_EXISTS',
   CONFLICT: 'CONFLICT',
   FORBIDDEN: 'FORBIDDEN',
   UNAUTHORIZED: 'UNAUTHORIZED',
-  
-  // Rate limiting (4xx)
   RATE_LIMIT_EXCEEDED: 'RATE_LIMIT_EXCEEDED',
-  
-  // Server errors (5xx)
   INTERNAL_ERROR: 'INTERNAL_ERROR',
   SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE',
   TIMEOUT: 'TIMEOUT',
-} as const;
+} as const
 
-export type ErrorCode = keyof typeof ErrorCodes;
+export type ErrorCode = keyof typeof ErrorCodes
 
-// HTTP Status codes mapping
 export const HttpStatus = {
   OK: 200,
   CREATED: 201,
@@ -96,9 +97,8 @@ export const HttpStatus = {
   TOO_MANY_REQUESTS: 429,
   INTERNAL_SERVER_ERROR: 500,
   SERVICE_UNAVAILABLE: 503,
-} as const;
+} as const
 
-// Error code to status mapping
 const ERROR_STATUS_MAP: Record<string, number> = {
   [ErrorCodes.INVALID_API_KEY]: HttpStatus.UNAUTHORIZED,
   [ErrorCodes.API_KEY_EXPIRED]: HttpStatus.UNAUTHORIZED,
@@ -118,83 +118,56 @@ const ERROR_STATUS_MAP: Record<string, number> = {
   [ErrorCodes.INTERNAL_ERROR]: HttpStatus.INTERNAL_SERVER_ERROR,
   [ErrorCodes.SERVICE_UNAVAILABLE]: HttpStatus.SERVICE_UNAVAILABLE,
   [ErrorCodes.TIMEOUT]: HttpStatus.SERVICE_UNAVAILABLE,
-};
-
-// ============================================================
-// Helper functions
-// ============================================================
-
-/**
- * Generate a unique request ID
- */
-function generateRequestId(): string {
-  return `req_${Date.now().toString(36)}_${randomUUID().substring(0, 8)}`;
 }
 
-/**
- * Build base metadata object
- */
-function buildMeta(options?: {
-  pagination?: PaginationMeta;
-  rateLimit?: RateLimitMeta;
-}): ApiResponseMeta {
+// ============================================================
+// Helpers
+// ============================================================
+
+function generateRequestId(): string {
+  return `req_${Date.now().toString(36)}_${randomUUID().substring(0, 8)}`
+}
+
+function buildMeta(options?: { pagination?: PaginationMeta; rateLimit?: RateLimitMeta }): ApiResponseMeta {
   return {
     requestId: generateRequestId(),
     timestamp: new Date().toISOString(),
     version: API_VERSION,
     ...options,
-  };
+  }
 }
 
-/**
- * Get HTTP status for an error code
- */
 function getStatusForError(code: string, customStatus?: number): number {
-  if (customStatus) return customStatus;
-  return ERROR_STATUS_MAP[code] || HttpStatus.INTERNAL_SERVER_ERROR;
+  if (typeof customStatus === 'number' && customStatus > 0) return customStatus
+  return ERROR_STATUS_MAP[code] || HttpStatus.INTERNAL_SERVER_ERROR
 }
 
 // ============================================================
-// Response builders
+// Builders
 // ============================================================
 
-/**
- * Create a successful response
- */
 export function apiSuccess<T>(
   data: T,
-  options?: {
-    status?: number;
-    pagination?: PaginationMeta;
-    rateLimit?: RateLimitMeta;
-  }
+  options?: { status?: number; pagination?: PaginationMeta; rateLimit?: RateLimitMeta }
 ): { response: ApiResponse<T>; status: number } {
   return {
     response: {
       success: true,
       data,
-      meta: buildMeta({
-        pagination: options?.pagination,
-        rateLimit: options?.rateLimit,
-      }),
+      meta: buildMeta({ pagination: options?.pagination, rateLimit: options?.rateLimit }),
     },
     status: options?.status || HttpStatus.OK,
-  };
+  }
 }
 
-/**
- * Create a paginated response
- */
 export function apiPaginated<T>(
   items: T[],
   total: number,
   page: number,
   perPage: number,
-  options?: {
-    rateLimit?: RateLimitMeta;
-  }
+  options?: { rateLimit?: RateLimitMeta }
 ): { response: ApiResponse<T[]>; status: number } {
-  const totalPages = Math.ceil(total / perPage);
+  const totalPages = Math.ceil(total / perPage)
   const pagination: PaginationMeta = {
     page,
     perPage,
@@ -202,115 +175,60 @@ export function apiPaginated<T>(
     totalPages,
     hasNext: page * perPage < total,
     hasPrev: page > 1,
-  };
-
+  }
   return {
     response: {
       success: true,
       data: items,
-      meta: buildMeta({
-        pagination,
-        rateLimit: options?.rateLimit,
-      }),
+      meta: buildMeta({ pagination, rateLimit: options?.rateLimit }),
     },
     status: HttpStatus.OK,
-  };
+  }
 }
 
-/**
- * Create an error response
- */
 export function apiError(
   code: string,
   message: string,
-  options?: {
-    details?: any;
-    status?: number;
-    rateLimit?: RateLimitMeta;
-  }
+  options?: { details?: any; status?: number; rateLimit?: RateLimitMeta }
 ): { response: ApiResponse<never>; status: number } {
-  const status = getStatusForError(code, options?.status);
-  
+  const status = getStatusForError(code, options?.status)
   return {
     response: {
       success: false,
-      error: {
-        code,
-        message,
-        details: options?.details,
-      },
-      meta: buildMeta({
-        rateLimit: options?.rateLimit,
-      }),
-    },
-    status,
-  };
-}
-
-/**
- * Create a "not found" error response
- */
-export function apiNotFound(
-  resource: string = 'Ressource',
-  id?: string
-): { response: ApiResponse<never>; status: number } {
-  return apiError(ErrorCodes.NOT_FOUND, `${resource}${id ? ` (${id})` : ''} non trouvée(e).`, {
-    details: id ? { id } : undefined,
-  });
-}
-
-/**
- * Create a validation error response
- */
-export function apiValidationError(
-  message: string,
-  details?: any
-): { response: ApiResponse<never>; status: number } {
-  return apiError(ErrorCodes.VALIDATION_ERROR, message, { details });
-}
-
-/**
- * Create a "created" response
- */
-export function apiCreated<T>(
-  data: T,
-  options?: {
-    rateLimit?: RateLimitMeta;
-  }
-): { response: ApiResponse<T>; status: number } {
-  return apiSuccess(data, { 
-    status: HttpStatus.CREATED, 
-    ...options 
-  });
-}
-
-/**
- * Create a "no content" response (for delete operations)
- */
-export function apiNoContent(
-  options?: {
-    rateLimit?: RateLimitMeta;
-  }
-): { response: ApiResponse<null>; status: number } {
-  return {
-    response: {
-      success: true,
-      data: null,
+      error: { code, message, details: options?.details },
       meta: buildMeta({ rateLimit: options?.rateLimit }),
     },
+    status,
+  }
+}
+
+export function apiNotFound(resource: string = 'Ressource', id?: string): { response: ApiResponse<never>; status: number } {
+  return apiError(ErrorCodes.NOT_FOUND, `${resource}${id ? ` (${id})` : ''} non trouvée(e).`, {
+    details: id ? { id } : undefined,
+  })
+}
+
+export function apiValidationError(message: string, details?: any): { response: ApiResponse<never>; status: number } {
+  return apiError(ErrorCodes.VALIDATION_ERROR, message, { details })
+}
+
+export function apiCreated<T>(data: T, options?: { rateLimit?: RateLimitMeta }): { response: ApiResponse<T>; status: number } {
+  return apiSuccess(data, { status: HttpStatus.CREATED, ...options })
+}
+
+export function apiNoContent(options?: { rateLimit?: RateLimitMeta }): { response: ApiResponse<null>; status: number } {
+  return {
+    response: { success: true, data: null, meta: buildMeta({ rateLimit: options?.rateLimit }) },
     status: HttpStatus.NO_CONTENT,
-  };
+  }
 }
 
 // ============================================================
 // Next.js Response helpers
 // ============================================================
 
-import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server'
 
-/**
- * Convert API response to NextResponse with proper headers
- */
 export function toNextResponse<T>(
   result: { response: ApiResponse<T>; status: number },
   additionalHeaders?: Record<string, string>
@@ -320,50 +238,49 @@ export function toNextResponse<T>(
     'X-API-Version': API_VERSION,
     'X-Request-ID': result.response.meta.requestId,
     ...additionalHeaders,
-  };
-
-  // Add rate limit headers if present
-  if (result.response.meta.rateLimit) {
-    headers['X-RateLimit-Limit'] = String(result.response.meta.rateLimit.limit);
-    headers['X-RateLimit-Remaining'] = String(result.response.meta.rateLimit.remaining);
-    headers['X-RateLimit-Reset'] = String(result.response.meta.rateLimit.reset);
   }
 
-  return NextResponse.json(result.response, {
-    status: result.status,
-    headers,
-  });
+  if (result.response.meta.rateLimit) {
+    headers['X-RateLimit-Limit'] = String(result.response.meta.rateLimit.limit)
+    headers['X-RateLimit-Remaining'] = String(result.response.meta.rateLimit.remaining)
+    headers['X-RateLimit-Reset'] = String(result.response.meta.rateLimit.reset)
+  }
+
+  // Defensive: ensure status is always a valid HTTP code (200-599 or 101).
+  const safeStatus =
+    typeof result.status === 'number' && result.status >= 200 && result.status <= 599
+      ? result.status
+      : HttpStatus.INTERNAL_SERVER_ERROR
+
+  return NextResponse.json(result.response, { status: safeStatus, headers })
 }
 
-/**
- * Quick success response helper
- */
 export function jsonSuccess<T>(data: T, status?: number): NextResponse {
-  return toNextResponse(apiSuccess(data, { status }));
+  return toNextResponse(apiSuccess(data, { status }))
 }
 
 /**
- * Quick error response helper
+ * P1 FIX: Accept either form:
+ *   jsonError(code, message, options?: { status?, details? })   // preferred
+ *   jsonError(code, message, status?: number, details?: any)    // legacy
  */
-export function jsonError(code: string, message: string, status?: number, details?: any): NextResponse {
-  return toNextResponse(apiError(code, message, { status, details }));
-}
-
-/**
- * Quick not found response helper
- */
-export function jsonNotFound(resource?: string, id?: string): NextResponse {
-  return toNextResponse(apiNotFound(resource, id));
-}
-
-/**
- * Quick paginated response helper
- */
-export function jsonPaginated<T>(
-  items: T[],
-  total: number,
-  page: number,
-  perPage: number
+export function jsonError(
+  code: string,
+  message: string,
+  statusOrOptions?: number | { status?: number; details?: any },
+  details?: any
 ): NextResponse {
-  return toNextResponse(apiPaginated(items, total, page, perPage));
+  const opts =
+    typeof statusOrOptions === 'number'
+      ? { status: statusOrOptions, details }
+      : statusOrOptions || {}
+  return toNextResponse(apiError(code, message, opts))
+}
+
+export function jsonNotFound(resource?: string, id?: string): NextResponse {
+  return toNextResponse(apiNotFound(resource, id))
+}
+
+export function jsonPaginated<T>(items: T[], total: number, page: number, perPage: number): NextResponse {
+  return toNextResponse(apiPaginated(items, total, page, perPage))
 }
