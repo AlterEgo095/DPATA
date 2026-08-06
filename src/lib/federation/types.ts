@@ -18,7 +18,16 @@ export interface University {
   contactEmail: string;
   status: UniversityStatus;
   apiEndpoint: string;
+  // P2-B: Added apiUrl as optional alias (used by federation/store.ts default data
+  // and by /api/federation/universities POST route when creating a new university).
+  apiUrl?: string;
   apiKey: string; // hashed (bcrypt)
+  // P2-B: Added isActive as optional boolean convenience flag.
+  // Several routes (federation/search, universities, universities/[id]) read
+  // university.isActive to filter active partners. Optional because the
+  // canonical field is `status: UniversityStatus`; isActive is a denormalized
+  // boolean set by the store and by admin toggle actions.
+  isActive?: boolean;
   documentCount: number;
   lastSyncAt: Date | null;
   lastSyncStatus: 'success' | 'failed' | 'pending' | null;

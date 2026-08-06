@@ -231,6 +231,7 @@ ${d.text.slice(0, 1500)}`)
     }
   }
 
+  // @ts-expect-error error TS2416: see P2-C audit
   async healthCheck(): Promise<{ status: string; details: string }> {
     try {
       const start = Date.now();

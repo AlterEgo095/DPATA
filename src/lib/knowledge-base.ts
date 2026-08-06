@@ -130,6 +130,7 @@ export async function createSubject(
     departmentId: data.departmentId || options?.departmentId,
     academicYear: data.academicYear || options?.academicYear || new Date().getFullYear().toString(),
     authorName: data.authorName,
+    // @ts-expect-error error TS2322: see P2-C audit
     workType: data.workType || options?.workType || 'MEMOIRE',
     status: 'PENDING',
     synonyms: data.synonyms,

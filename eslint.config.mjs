@@ -44,7 +44,8 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     "no-useless-escape": "off",
   },
 }, {
-  ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills"]
+  // P2-B: Added backups/** to ignores (was missing; caused TS errors on backup files)
+  ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "backups/**", "skills"]
 }];
 
 export default eslintConfig;

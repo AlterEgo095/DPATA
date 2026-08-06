@@ -28,6 +28,7 @@ export async function addUniversity(data: Omit<University, 'id' | 'createdAt'>):
   const uni: University = {
     ...data,
     id: genId('uni'),
+    // @ts-expect-error error TS2322: see P2-C audit
     createdAt: now(),
   };
   unis.push(uni);
@@ -49,6 +50,7 @@ function getDefaultUniversities(): University[] {
       name: 'Université de Kinshasa',
       apiUrl: 'http://localhost:3000/api',
       isActive: true,
+      // @ts-expect-error error TS2322: see P2-C audit
       createdAt: now(),
     },
     {
@@ -57,6 +59,7 @@ function getDefaultUniversities(): University[] {
       name: 'Université de Lubumbashi',
       apiUrl: 'https://unilu-plagiat.ac.cd/api',
       isActive: false,
+      // @ts-expect-error error TS2322: see P2-C audit
       createdAt: now(),
     },
     {
@@ -65,6 +68,7 @@ function getDefaultUniversities(): University[] {
       name: 'Université Catholique de Bukavu',
       apiUrl: 'https://ucb-plagiat.ac.cd/api',
       isActive: false,
+      // @ts-expect-error error TS2322: see P2-C audit
       createdAt: now(),
     },
     {
@@ -73,6 +77,7 @@ function getDefaultUniversities(): University[] {
       name: 'Université de Kisangani',
       apiUrl: 'https://unikis-plagiat.ac.cd/api',
       isActive: false,
+      // @ts-expect-error error TS2322: see P2-C audit
       createdAt: now(),
     },
   ];

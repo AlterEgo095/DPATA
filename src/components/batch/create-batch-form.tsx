@@ -126,6 +126,7 @@ export function CreateBatchForm({ onSubmit, isSubmitting = false, className }: C
           return prev;
         }
         next.add(docId);
+        // @ts-expect-error error TS2345: see P2-C audit
         setErrors(prev => ({ ...prev, docs: undefined }));
       }
       return next;

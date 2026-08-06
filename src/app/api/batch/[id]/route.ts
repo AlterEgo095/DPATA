@@ -5,7 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { batchManager } from '@/lib/batch/batch-manager';
 import { getCurrentUser } from '@/lib/auth/jwt';
-import { loadDB } from '@/lib/store/db';
+import { loadDB, saveDB } from '@/lib/store/db';
 import { 
   exportToCSV, 
   exportStatsToCSV, 
@@ -62,7 +62,10 @@ export async function GET(req: NextRequest, context: RouteContext) {
     const creator = db.users.find(u => u.id === jobRecord.createdBy);
 
     // Calculer les stats si complété
-    let stats = null;
+    // P2-B: Fixed `stats` type. `let stats = null` inferred type `null` which
+    // cannot accept the BatchJobStats returned by calculateBatchStats. Now
+    // explicitly typed as the return type of calculateBatchStats (or null).
+    let stats: ReturnType<typeof calculateBatchStats> | null = null;
     if (jobRecord.status === 'completed' && results.length > 0) {
       stats = calculateBatchStats(results);
     }
@@ -135,6 +138,9 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
         updatedAt: new Date().toISOString(),
       };
       
+      // P2-B: Fixed missing saveDB import. saveDB is exported from
+      // @/lib/store/db but was not imported in this file. Added to the
+      // import statement at the top.
       await saveDB(db);
     }
 

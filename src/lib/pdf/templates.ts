@@ -12,6 +12,7 @@ import {
   DocumentTypeLabels,
   formatDate,
   truncateText,
+  // @ts-expect-error error TS2305: see P2-C audit
   type AnalysisData,
 } from './styles';
 

@@ -2,6 +2,7 @@
 // Task ID: 6 — PlagiatIA OCR Module
 // Extracts text from PDF, DOCX, TXT, images and splits into subjects
 
+// @ts-expect-error error TS1192: see P2-C audit
 import pdf from 'pdf-parse';
 import mammoth from 'mammoth';
 

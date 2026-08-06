@@ -2,7 +2,7 @@
 // PHASE 2: Robustesse Backend - Pagination + Password Hashing
 
 import { NextRequest, NextResponse } from 'next/server';
-import { loadDB, saveDB, genId, now, audit, type UserRole } from '@/lib/store/db';
+import { loadDB, saveDB, genId, now, audit, type UserRole, type User } from '@/lib/store/db';
 import { getCurrentUser } from '@/lib/auth/jwt';
 import { hashPassword, getSecurityHeaders, sanitizeError } from '@/lib/security';
 import {
@@ -47,15 +47,26 @@ export async function GET(req: NextRequest) {
     const sortOrder = (searchParams.get('sortOrder') as 'asc' | 'desc') || 'desc';
 
     // Filter users
-    let users = db.users.filter(u => u.role !== 'SUPER_ADMIN');
+    let users: User[] = db.users.filter(u => u.role !== 'SUPER_ADMIN');
     
     if (role) users = users.filter(u => u.role === role);
     if (facultyId) users = users.filter(u => u.facultyId === facultyId);
+    // P2-B: user.facultyId is now valid because facultyId? was added to
+    // the JWTPayload interface in src/lib/auth/jwt.ts.
     if (user.role === 'FACULTY_ADMIN') users = users.filter(u => u.facultyId === user.facultyId);
 
     // Search filter
     if (searchTerm) {
-      users = filterBySearchTerm(users, searchTerm, ['email', 'firstName', 'lastName', 'matricule']);
+      // P2-B: filterBySearchTerm expects Record<string, unknown>[] but
+      // users is User[]. User has no string index signature so it's not
+      // assignable. Cast through unknown to satisfy the utility, then cast
+      // the result back to User[]. The filter only reads fields by name
+      // (email, firstName, lastName, matricule) which all exist on User.
+      users = filterBySearchTerm(
+        users as unknown as Record<string, unknown>[],
+        searchTerm,
+        ['email', 'firstName', 'lastName', 'matricule']
+      ) as unknown as User[];
     }
 
     // Sort
@@ -139,6 +150,7 @@ export async function POST(req: NextRequest) {
 
     // FACULTY_ADMIN ne peut créer que dans sa faculté
     let facultyId = parsed.data.facultyId;
+    // P2-B: user.facultyId is now valid because facultyId? was added to JWTPayload.
     if (user.role === 'FACULTY_ADMIN') facultyId = user.facultyId || facultyId;
 
     // Hash password with bcrypt (PHASE 1 security)

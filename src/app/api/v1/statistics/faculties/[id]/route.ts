@@ -1,18 +1,33 @@
 // API v1 Faculty Statistics Endpoint
 // Get statistics for a specific faculty
+//
+// P2-A MIGRATION: Replaced Prisma (`@/lib/db`) with JSON store (`@/lib/store/db`).
+// - `db.faculty.findUnique` (with `include: { departments }`) -> `db.faculties.find(...)` + `db.departments.filter(...)`
+// - `db.document.count` / `groupBy` -> in-memory filter + group-by loops
+// - `db.analysis.count` / `aggregate` (with `document: { facultyId }`) -> join via documents array
+// - `db.user.count` / `groupBy` -> in-memory filter + group-by loops
+// - `db.analysis.findMany` (with `document: { facultyId }`) -> join via documents array
+// - `db.apiAccessLog.create` -> push to `db.apiAccessLogs` (auto-trim at 5000)
+// API request/response shapes are unchanged; only the data access layer changed.
 
 import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
-import { 
-  apiKeyAuth, 
-  extractApiKeyFromHeaders, 
-  extractIpAddress 
+import {
+  loadDB,
+  saveDB,
+  genId,
+  now,
+  type Analysis,
+} from '@/lib/store/db';
+import {
+  apiKeyAuth,
+  extractApiKeyFromHeaders,
+  extractIpAddress
 } from '@/lib/api/auth/api-key-auth';
 import { rateLimiter, addRateLimitHeaders, createRateLimitResponse } from '@/lib/api/middleware/rate-limiter';
-import { 
-  toNextResponse, 
-  apiSuccess, 
-  apiError, 
+import {
+  toNextResponse,
+  apiSuccess,
+  apiError,
   ErrorCodes,
   jsonError,
   jsonNotFound
@@ -22,13 +37,53 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
+// ============================================================
+// Response shape helpers
+// ============================================================
+
+interface DepartmentStat {
+  id: string;
+  name: string;
+  documents: number;
+  analyses: number;
+}
+
+interface RecentAnalysisItem {
+  id: string;
+  documentTitle: string;
+  score: number | null;
+  status: Analysis['status'];
+  completedAt?: string;
+}
+
+interface FacultyStatsResponse {
+  faculty: { id: string; name: string; code: string };
+  generatedAt: string;
+  documents: {
+    total: number;
+    byStatus: Record<string, number>;
+    byType: Record<string, number>;
+  };
+  analyses: {
+    total: number;
+    completed: number;
+    averagePlagiarismScore: number | null;
+  };
+  users: {
+    total: number;
+    byRole: Record<string, number>;
+  };
+  departments: DepartmentStat[];
+  recentAnalyses: RecentAnalysisItem[];
+}
+
 /**
  * GET /api/v1/statistics/faculties/[id] - Get faculty-specific statistics
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const startTime = Date.now();
   const ipAddress = extractIpAddress(request.headers);
-  
+
   // Check IP-based rate limit
   const ipRateLimit = rateLimiter.checkIp(ipAddress);
   if (!ipRateLimit.allowed) {
@@ -63,167 +118,129 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const { id: facultyId } = await params;
 
   try {
+    const db = await loadDB();
+
     // Verify faculty exists
-    const faculty = await db.faculty.findUnique({
-      where: { id: facultyId },
-      include: {
-        departments: {
-          select: { id: true, name: true },
-        },
-      },
-    });
+    const faculty = db.faculties.find((f) => f.id === facultyId);
 
     if (!faculty) {
       return jsonNotFound('Faculté', facultyId);
     }
 
-    // Fetch all statistics for this faculty in parallel
-    const [
-      totalDocuments,
-      documentsByStatus,
-      documentsByType,
-      totalAnalyses,
-      completedAnalyses,
-      avgPlagiarismScore,
-      totalUsers,
-      usersByRole,
-      departmentStats,
-      recentAnalyses,
-    ] = await Promise.all([
-      // Total documents
-      db.document.count({ where: { facultyId } }),
-      
-      // Documents by status
-      db.document.groupBy({
-        by: ['status'],
-        where: { facultyId },
-        _count: { status: true },
-      }),
-      
-      // Documents by type
-      db.document.groupBy({
-        by: ['type'],
-        where: { facultyId },
-        _count: { type: true },
-      }),
-      
-      // Total analyses (via documents)
-      db.analysis.count({
-        where: { document: { facultyId } },
-      }),
-      
-      // Completed analyses with scores
-      db.analysis.count({
-        where: {
-          document: { facultyId },
-          status: 'COMPLETED',
-          globalScore: { not: null },
-        },
-      }),
-      
-      // Average plagiarism score
-      db.analysis.aggregate({
-        where: {
-          document: { facultyId },
-          status: 'COMPLETED',
-          globalScore: { not: null },
-        },
-        _avg: { globalScore: true },
-      }),
-      
-      // Users in this faculty
-      db.user.count({ where: { facultyId, isActive: true } }),
-      
-      // Users by role
-      db.user.groupBy({
-        by: ['role'],
-        where: { facultyId, isActive: true },
-        _count: { role: true },
-      }),
-      
-      // Department-level stats
-      Promise.all(
-        faculty.departments.map(async (dept) => {
-          const [docCount, analysisCount] = await Promise.all([
-            db.document.count({ where: { facultyId, departmentId: dept.id } }),
-            db.analysis.count({ where: { document: { facultyId, departmentId: dept.id }, status: 'COMPLETED' } }),
-          ]);
-          return {
-            id: dept.id,
-            name: dept.name,
-            documents: docCount,
-            analyses: analysisCount,
-          };
-        })
-      ),
-      
-      // Recent analyses (last 10)
-      db.analysis.findMany({
-        where: { document: { facultyId } },
-        orderBy: { completedAt: 'desc' },
-        take: 10,
-        select: {
-          id: true,
-          globalScore: true,
-          status: true,
-          completedAt: true,
-          document: { select: { id: true, title: true } },
-        },
-      }),
-    ]);
+    // Faculty's departments
+    const facultyDepartments = db.departments.filter((d) => d.facultyId === facultyId);
+
+    // All documents in this faculty
+    const facultyDocs = db.documents.filter((d) => d.facultyId === facultyId);
+
+    // Documents by status
+    const documentsByStatus: Record<string, number> = {};
+    for (const doc of facultyDocs) {
+      documentsByStatus[doc.status] = (documentsByStatus[doc.status] || 0) + 1;
+    }
+
+    // Documents by type
+    const documentsByType: Record<string, number> = {};
+    for (const doc of facultyDocs) {
+      documentsByType[doc.type] = (documentsByType[doc.type] || 0) + 1;
+    }
+
+    // All analyses whose document is in this faculty (manual join)
+    const facultyDocIds = new Set(facultyDocs.map((d) => d.id));
+    const facultyAnalyses: Analysis[] = db.analyses.filter((a) => facultyDocIds.has(a.documentId));
+
+    const totalAnalyses = facultyAnalyses.length;
+
+    // Completed analyses with non-null globalScore
+    const completedAnalysesList = facultyAnalyses.filter(
+      (a) => a.status === 'COMPLETED' && a.globalScore !== null && a.globalScore !== undefined
+    );
+    const completedAnalyses = completedAnalysesList.length;
+
+    // Average plagiarism score
+    const avgScore =
+      completedAnalyses > 0
+        ? completedAnalysesList.reduce((sum, a) => sum + (a.globalScore || 0), 0) / completedAnalyses
+        : null;
+    const averagePlagiarismScore = avgScore !== null ? Math.round(avgScore * 10000) / 100 : null;
+
+    // Users in this faculty (active)
+    const facultyUsers = db.users.filter((u) => u.facultyId === facultyId && u.isActive);
+    const totalUsers = facultyUsers.length;
+    const usersByRole: Record<string, number> = {};
+    for (const u of facultyUsers) {
+      usersByRole[u.role] = (usersByRole[u.role] || 0) + 1;
+    }
+
+    // Department-level stats
+    const departmentStats: DepartmentStat[] = facultyDepartments.map((dept) => {
+      const deptDocIds = new Set(
+        db.documents.filter((d) => d.facultyId === facultyId && d.departmentId === dept.id).map((d) => d.id)
+      );
+      const docCount = deptDocIds.size;
+      const analysisCount = db.analyses.filter(
+        (a) => deptDocIds.has(a.documentId) && a.status === 'COMPLETED'
+      ).length;
+      return {
+        id: dept.id,
+        name: dept.name,
+        documents: docCount,
+        analyses: analysisCount,
+      };
+    });
+
+    // Recent analyses (last 10, by completedAt desc — fall back to createdAt if null)
+    const recentAnalyses: RecentAnalysisItem[] = facultyAnalyses
+      .slice()
+      .sort((a, b) => {
+        const aT = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+        const bT = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+        return bT - aT;
+      })
+      .slice(0, 10)
+      .map<RecentAnalysisItem>((a) => {
+        const doc = db.documents.find((d) => d.id === a.documentId);
+        return {
+          id: a.id,
+          documentTitle: doc ? doc.title : '',
+          score: a.globalScore !== null && a.globalScore !== undefined
+            ? Math.round(a.globalScore * 10000) / 100
+            : null,
+          status: a.status,
+          completedAt: a.completedAt,
+        };
+      });
 
     // Build response object
-    const facultyStats = {
+    const facultyStats: FacultyStatsResponse = {
       faculty: {
         id: faculty.id,
         name: faculty.name,
         code: faculty.code,
       },
-      
+
       generatedAt: new Date().toISOString(),
-      
-      // Document statistics
+
       documents: {
-        total: totalDocuments,
-        byStatus: documentsByStatus.reduce((acc, item) => {
-          acc[item.status] = item._count.status;
-          return acc;
-        }, {} as Record<string, number>),
-        byType: documentsByType.reduce((acc, item) => {
-          acc[item.type] = item._count.type;
-          return acc;
-        }, {} as Record<string, number>),
+        total: facultyDocs.length,
+        byStatus: documentsByStatus,
+        byType: documentsByType,
       },
-      
-      // Analysis statistics
+
       analyses: {
         total: totalAnalyses,
         completed: completedAnalyses,
-        averagePlagiarismScore: avgPlagiarismScore._avg.globalScore
-          ? Math.round(avgPlagiarismScore._avg.globalScore * 10000) / 100
-          : null,
+        averagePlagiarismScore,
       },
-      
-      // User statistics
+
       users: {
         total: totalUsers,
-        byRole: usersByRole.reduce((acc, item) => {
-          acc[item.role] = item._count.role;
-          return acc;
-        }, {} as Record<string, number>),
+        byRole: usersByRole,
       },
-      
-      // Department breakdown
+
       departments: departmentStats,
-      
-      // Recent activity
-      recentAnalyses: recentAnalyses.map(analysis => ({
-        id: analysis.id,
-        documentTitle: analysis.document.title,
-        score: analysis.globalScore ? Math.round(analysis.globalScore * 10000) / 100 : null,
-        status: analysis.status,
-        completedAt: analysis.completedAt,
-      })),
+
+      recentAnalyses,
     };
 
     // Increment usage and log
@@ -254,6 +271,7 @@ export async function OPTIONS() {
 }
 
 // Helper function to log API access
+// P2-A: Migrated from `db.apiAccessLog.create()` (Prisma) to JSON store push.
 async function logApiAccess(
   apiKeyId: string,
   method: string,
@@ -261,21 +279,27 @@ async function logApiAccess(
   statusCode: number,
   responseTimeMs: number,
   ipAddress?: string,
-  error?: string
+  _error?: string
 ) {
   try {
-    await db.apiAccessLog.create({
-      data: {
-        apiKeyId,
-        method,
-        path,
-        statusCode,
-        responseTimeMs,
-        ipAddress,
-        requestId: `req_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 10)}`,
-        error,
-      },
+    const db = await loadDB();
+    if (!Array.isArray(db.apiAccessLogs)) {
+      db.apiAccessLogs = [];
+    }
+    db.apiAccessLogs.push({
+      id: genId('alog'),
+      apiKeyId,
+      method,
+      path,
+      statusCode,
+      responseTimeMs,
+      ipAddress: ipAddress || 'unknown',
+      createdAt: now(),
     });
+    if (db.apiAccessLogs.length > 5000) {
+      db.apiAccessLogs = db.apiAccessLogs.slice(0, 5000);
+    }
+    await saveDB(db);
   } catch (e) {
     console.error('Failed to log API access:', e);
   }

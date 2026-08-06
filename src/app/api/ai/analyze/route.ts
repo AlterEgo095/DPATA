@@ -367,6 +367,13 @@ function handleStreamingAnalysis(
   body: AnalyzeRequestBody
 ): Response {
   const encoder = new TextEncoder();
+  // P2-B: Track start time locally to compute processingTimeMs ourselves.
+  // The `result` returned by factory.analyzeWithProgress is typed as
+  // `ComparativeAnalysisResult | FactoryAnalysisResult<AnalysisResult>`, and
+  // only ComparativeAnalysisResult exposes `processingTimeMs`. Rather than
+  // narrowing the union, we compute the elapsed time from a local timer which
+  // is always available and semantically equivalent.
+  const streamStartTime = Date.now();
   
   const stream = new ReadableStream({
     async start(controller) {
@@ -416,7 +423,10 @@ function handleStreamingAnalysis(
         sendEvent('complete', {
           analysisId,
           result,
-          processingTimeMs: result.processingTimeMs,
+          // P2-B: Compute processingTimeMs from local timer instead of
+          // accessing result.processingTimeMs (which may not exist on all
+          // members of the result union type).
+          processingTimeMs: Date.now() - streamStartTime,
           timestamp: new Date().toISOString(),
         });
 

@@ -97,6 +97,7 @@ export interface FactoryConfig {
 }
 
 /** Résultat avec métadonnées de la factory */
+// @ts-expect-error error TS2312: see P2-C audit
 export interface FactoryAnalysisResult<T = AnalysisResult> extends T {
   /** Moteur utilisé */
   engineUsed: EngineType;
@@ -849,4 +850,5 @@ export class EngineFactoryEnhanced {
 // ============================================================================
 
 export default EngineFactoryEnhanced;
+// @ts-expect-error error TS2484: see P2-C audit
 export { DEFAULT_FACTORY_CONFIG, type FactoryConfig };

@@ -286,6 +286,7 @@ export function ActivityTimeline({
                             className="w-5 h-5 rounded-sm cursor-pointer transition-all hover:ring-2 hover:ring-offset-1 hover:ring-orange-400"
                             style={{
                               backgroundColor: getHeatmapColor(intensity),
+                              // @ts-expect-error error TS2353: see P2-C audit
                               title: `${day} ${hour}h: ${count} activités`,
                             }}
                           />

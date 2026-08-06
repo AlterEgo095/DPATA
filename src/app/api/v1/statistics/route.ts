@@ -1,23 +1,82 @@
 // API v1 Statistics Endpoint
 // Read-only statistics endpoints for overview, trends, and faculty-specific stats
+//
+// P2-A MIGRATION: Replaced Prisma (`@/lib/db`) with JSON store (`@/lib/store/db`).
+// All Prisma calls translated to in-memory ops:
+//   - `db.document.count`            -> `db.documents.filter(...).length`
+//   - `db.document.groupBy`          -> group + count loop
+//   - `db.analysis.count`            -> `db.analyses.filter(...).length`
+//   - `db.analysis.groupBy`          -> group + count loop
+//   - `db.analysis.aggregate`        -> filter + reduce
+//   - `db.user.count` / `groupBy`    -> same patterns on `db.users`
+//   - `db.faculty.count`             -> `db.faculties.filter(...).length`
+//   - `db.department.count`          -> `db.departments.filter(...).length`
+//   - `db.document.findMany`         -> filter + sort + slice + map (select)
+//   - `db.apiAccessLog.create`       -> push to `db.apiAccessLogs` (auto-trim)
+// API request/response shapes are unchanged; only the data access layer changed.
 
 import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
-import { 
-  apiKeyAuth, 
-  extractApiKeyFromHeaders, 
-  extractIpAddress 
+import {
+  loadDB,
+  saveDB,
+  genId,
+  now,
+  type Document,
+  type Analysis,
+  type User,
+} from '@/lib/store/db';
+import {
+  apiKeyAuth,
+  extractApiKeyFromHeaders,
+  extractIpAddress
 } from '@/lib/api/auth/api-key-auth';
 import { rateLimiter, addRateLimitHeaders, createRateLimitResponse } from '@/lib/api/middleware/rate-limiter';
-import { 
-  toNextResponse, 
-  apiSuccess, 
-  apiError, 
+import {
+  toNextResponse,
+  apiSuccess,
+  apiError,
   ErrorCodes,
+  HttpStatus,
   jsonError,
   jsonNotFound
 } from '@/lib/api/response/api-response';
 import { parseQueryParams, statisticsOverviewSchema, statisticsTrendsSchema } from '@/lib/api/validation/request-validator';
+
+// ============================================================
+// Response shape helpers
+// ============================================================
+
+interface RecentActivityItem {
+  id: string;
+  title: string;
+  status: Document['status'];
+  uploadedBy: string; // formatted "firstName lastName"
+  createdAt: string;
+}
+
+interface OverviewResponse {
+  period: string;
+  generatedAt: string;
+  documents: {
+    total: number;
+    byStatus: Record<string, number>;
+  };
+  analyses: {
+    total: number;
+    byStatus: Record<string, number>;
+    averagePlagiarismScore: number | null;
+    sampleSize: number;
+  };
+  users: {
+    total: number;
+    byRole: Record<string, number>;
+  };
+  organization: {
+    faculties: number;
+    departments: number;
+  };
+  recentActivity: RecentActivityItem[];
+}
 
 /**
  * GET /api/v1/statistics/overview - Platform overview statistics
@@ -25,7 +84,7 @@ import { parseQueryParams, statisticsOverviewSchema, statisticsTrendsSchema } fr
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
   const ipAddress = extractIpAddress(request.headers);
-  
+
   // Check IP-based rate limit
   const ipRateLimit = rateLimiter.checkIp(ipAddress);
   if (!ipRateLimit.allowed) {
@@ -60,164 +119,152 @@ export async function GET(request: NextRequest) {
   // Parse query parameters
   const queryParams = parseQueryParams(statisticsOverviewSchema, request.nextUrl.searchParams);
   if (!queryParams.success) {
-    return toNextResponse(queryParams.error as any);
+    return toNextResponse({ response: queryParams.error, status: HttpStatus.BAD_REQUEST });
   }
 
   const { period, facultyId } = queryParams.data;
 
   try {
     // Calculate date range based on period
-    const now = new Date();
-    let startDate = new Date();
-    
+    const nowDate = new Date();
+    const startDate = new Date();
+
     switch (period) {
       case '7d':
-        startDate.setDate(now.getDate() - 7);
+        startDate.setDate(nowDate.getDate() - 7);
         break;
       case '30d':
-        startDate.setDate(now.getDate() - 30);
+        startDate.setDate(nowDate.getDate() - 30);
         break;
       case '90d':
-        startDate.setDate(now.getDate() - 90);
+        startDate.setDate(nowDate.getDate() - 90);
         break;
       case '1y':
-        startDate.setFullYear(now.getFullYear() - 1);
+        startDate.setFullYear(nowDate.getFullYear() - 1);
         break;
       default:
-        startDate.setDate(now.getDate() - 30);
+        startDate.setDate(nowDate.getDate() - 30);
     }
 
-    // Build base where clause
-    const baseWhere: Record<string, any> = { createdAt: { gte: startDate } };
-    if (facultyId) baseWhere.facultyId = facultyId;
+    const startMs = startDate.getTime();
 
-    // Fetch all statistics in parallel
-    const [
-      totalDocuments,
-      documentsByStatus,
-      totalAnalyses,
-      analysesByStatus,
-      avgPlagiarismScore,
-      totalUsers,
-      usersByRole,
-      totalFaculties,
-      totalDepartments,
-      recentDocuments,
-    ] = await Promise.all([
-      // Total documents count
-      db.document.count({ where: baseWhere }),
-      
-      // Documents by status
-      db.document.groupBy({
-        by: ['status'],
-        where: baseWhere,
-        _count: { status: true },
-      }),
-      
-      // Total analyses count
-      db.analysis.count({ 
-        where: { createdAt: { gte: startDate }, ...(facultyId ? { document: { facultyId } } : {}) }
-      }),
-      
-      // Analyses by status
-      db.analysis.groupBy({
-        by: ['status'],
-        where: { createdAt: { gte: startDate } },
-        _count: { status: true },
-      }),
-      
-      // Average plagiarism score (from completed analyses)
-      db.analysis.aggregate({
-        where: { 
-          status: 'COMPLETED', 
-          globalScore: { not: null },
-          createdAt: { gte: startDate }
-        },
-        _avg: { globalScore: true },
-        _count: true,
-      }),
-      
-      // Total users
-      db.user.count({ where: { isActive: true } }),
-      
-      // Users by role
-      db.user.groupBy({
-        by: ['role'],
-        where: { isActive: true },
-        _count: { role: true },
-      }),
-      
-      // Total faculties
-      db.faculty.count({ where: { isActive: true } }),
-      
-      // Total departments
-      db.department.count({ where: { isActive: true } }),
-      
-      // Recent documents (last 10)
-      db.document.findMany({
-        where: baseWhere,
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-        select: {
-          id: true,
-          title: true,
-          status: true,
-          createdAt: true,
-          uploadedBy: { select: { firstName: true, lastName: true } },
-        },
-      }),
-    ]);
+    const db = await loadDB();
 
-    // Build response object
-    const overview = {
+    // ============================================================
+    // Documents (filtered by createdAt >= startDate AND optional facultyId)
+    // ============================================================
+    const filteredDocs = db.documents.filter((doc) => {
+      if (new Date(doc.createdAt).getTime() < startMs) return false;
+      if (facultyId && doc.facultyId !== facultyId) return false;
+      return true;
+    });
+
+    const totalDocuments = filteredDocs.length;
+
+    // Group by status
+    const documentsByStatus: Record<string, number> = {};
+    for (const doc of filteredDocs) {
+      documentsByStatus[doc.status] = (documentsByStatus[doc.status] || 0) + 1;
+    }
+
+    // ============================================================
+    // Analyses (filtered by createdAt >= startDate; if facultyId set,
+    // joined via the analysis's document's facultyId)
+    // ============================================================
+    const filteredAnalyses: Analysis[] = db.analyses.filter((anl) => {
+      if (new Date(anl.createdAt).getTime() < startMs) return false;
+      if (facultyId) {
+        const doc = db.documents.find((d) => d.id === anl.documentId);
+        if (!doc || doc.facultyId !== facultyId) return false;
+      }
+      return true;
+    });
+
+    const totalAnalyses = filteredAnalyses.length;
+
+    const analysesByStatus: Record<string, number> = {};
+    for (const anl of filteredAnalyses) {
+      analysesByStatus[anl.status] = (analysesByStatus[anl.status] || 0) + 1;
+    }
+
+    // Average plagiarism score (from COMPLETED analyses with non-null globalScore)
+    const scoredAnalyses = filteredAnalyses.filter(
+      (anl) => anl.status === 'COMPLETED' && typeof anl.globalScore === 'number' && anl.globalScore !== null
+    );
+    const sampleSize = scoredAnalyses.length;
+    const avgScore =
+      sampleSize > 0
+        ? scoredAnalyses.reduce((sum, anl) => sum + (anl.globalScore || 0), 0) / sampleSize
+        : null;
+    const averagePlagiarismScore =
+      avgScore !== null ? Math.round(avgScore * 10000) / 100 : null;
+
+    // ============================================================
+    // Users (active only)
+    // ============================================================
+    const activeUsers = db.users.filter((u) => u.isActive);
+    const totalUsers = activeUsers.length;
+    const usersByRole: Record<string, number> = {};
+    for (const u of activeUsers) {
+      usersByRole[u.role] = (usersByRole[u.role] || 0) + 1;
+    }
+
+    // ============================================================
+    // Organization counts
+    // ============================================================
+    const totalFaculties = db.faculties.filter((f) => f.isActive).length;
+    const totalDepartments = db.departments.filter((d) => d.isActive).length;
+
+    // ============================================================
+    // Recent documents (last 10)
+    // ============================================================
+    const recentDocs = filteredDocs
+      .slice()
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 10);
+
+    const recentActivity: RecentActivityItem[] = recentDocs.map((doc) => {
+      const uploader = db.users.find((u) => u.id === doc.uploadedById);
+      const uploadedBy = uploader ? `${uploader.firstName} ${uploader.lastName}` : '—';
+      return {
+        id: doc.id,
+        title: doc.title,
+        status: doc.status,
+        uploadedBy,
+        createdAt: doc.createdAt,
+      };
+    });
+
+    // ============================================================
+    // Build response
+    // ============================================================
+    const overview: OverviewResponse = {
       period,
       generatedAt: new Date().toISOString(),
-      
-      // Document statistics
+
       documents: {
         total: totalDocuments,
-        byStatus: documentsByStatus.reduce((acc, item) => {
-          acc[item.status] = item._count.status;
-          return acc;
-        }, {} as Record<string, number>),
+        byStatus: documentsByStatus,
       },
-      
-      // Analysis statistics
+
       analyses: {
         total: totalAnalyses,
-        byStatus: analysesByStatus.reduce((acc, item) => {
-          acc[item.status] = item._count.status;
-          return acc;
-        }, {} as Record<string, number>),
-        averagePlagiarismScore: avgPlagiarismScore._avg.globalScore 
-          ? Math.round(avgPlagiarismScore._avg.globalScore * 10000) / 100 
-          : null,
-        sampleSize: avgPlagiarismScore._count,
+        byStatus: analysesByStatus,
+        averagePlagiarismScore,
+        sampleSize,
       },
-      
-      // User statistics
+
       users: {
         total: totalUsers,
-        byRole: usersByRole.reduce((acc, item) => {
-          acc[item.role] = item._count.role;
-          return acc;
-        }, {} as Record<string, number>),
+        byRole: usersByRole,
       },
-      
-      // Organization statistics
+
       organization: {
         faculties: totalFaculties,
         departments: totalDepartments,
       },
-      
-      // Recent activity
-      recentActivity: recentDocuments.map(doc => ({
-        id: doc.id,
-        title: doc.title,
-        status: doc.status,
-        uploadedBy: `${doc.uploadedBy.firstName} ${doc.uploadedBy.lastName}`,
-        createdAt: doc.createdAt,
-      })),
+
+      recentActivity,
     };
 
     // Increment usage and log
@@ -248,6 +295,7 @@ export async function OPTIONS() {
 }
 
 // Helper function to log API access
+// P2-A: Migrated from `db.apiAccessLog.create()` (Prisma) to JSON store push.
 async function logApiAccess(
   apiKeyId: string,
   method: string,
@@ -255,21 +303,27 @@ async function logApiAccess(
   statusCode: number,
   responseTimeMs: number,
   ipAddress?: string,
-  error?: string
+  _error?: string
 ) {
   try {
-    await db.apiAccessLog.create({
-      data: {
-        apiKeyId,
-        method,
-        path,
-        statusCode,
-        responseTimeMs,
-        ipAddress,
-        requestId: `req_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 10)}`,
-        error,
-      },
+    const db = await loadDB();
+    if (!Array.isArray(db.apiAccessLogs)) {
+      db.apiAccessLogs = [];
+    }
+    db.apiAccessLogs.push({
+      id: genId('alog'),
+      apiKeyId,
+      method,
+      path,
+      statusCode,
+      responseTimeMs,
+      ipAddress: ipAddress || 'unknown',
+      createdAt: now(),
     });
+    if (db.apiAccessLogs.length > 5000) {
+      db.apiAccessLogs = db.apiAccessLogs.slice(0, 5000);
+    }
+    await saveDB(db);
   } catch (e) {
     console.error('Failed to log API access:', e);
   }

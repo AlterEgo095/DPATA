@@ -72,8 +72,8 @@ export function t(
   let value = getNestedValue(dictionary as unknown as Record<string, unknown>, key);
   
   // Si pas trouvé, essayer le dictionnaire français comme fallback
-  if (!value && dictionary !== dictionaries[fr]) {
-    value = getNestedValue(dictionaries[fr] as unknown as Record<string, unknown>, key);
+  if (!value && dictionary !== dictionaries['fr']) {
+    value = getNestedValue(dictionaries['fr'] as unknown as Record<string, unknown>, key);
   }
   
   // Si toujours pas trouvé, retourner la clé

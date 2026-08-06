@@ -146,8 +146,11 @@ export async function GET(req: NextRequest) {
         
         if (search) {
           data = data.filter(d =>
-            d.Titre.toLowerCase().includes(search.toLowerCase()) ||
-            d.Domaine.toLowerCase().includes(search.toLowerCase())
+            // P2-B: Coerce unknown values to string before calling toLowerCase.
+            // `data` is Record<string, unknown>[] so d.Titre and d.Domaine
+            // are `unknown`. Using String() makes them safe to lower-case.
+            String(d.Titre ?? '').toLowerCase().includes(search.toLowerCase()) ||
+            String(d.Domaine ?? '').toLowerCase().includes(search.toLowerCase())
           );
         }
         break;
@@ -170,10 +173,17 @@ export async function GET(req: NextRequest) {
         data = (db.analyses || []).map(a => ({
           ID_Document: a.documentId || '',
           Score_Global: a.globalScore?.toFixed(2) || '',
-          Couverture: a.coverage?.toFixed(2) || '',
-          Matches: a.matchCount || 0,
+          // P2-B: The Analysis type (in store/db.ts) does not declare
+          // `coverage`, `matchCount`, or `analyzedAt`. These fields were
+          // referenced in the original code but never added to the type.
+          // Rather than modifying the P1-hardened store/db.ts, we cast `a`
+          // to any to access these optional/extra fields. They may be
+          // undefined at runtime (yielding '' or 0), preserving the
+          // original behavior.
+          Couverture: (a as any).coverage?.toFixed(2) || '',
+          Matches: (a as any).matchCount || 0,
           Statut: a.status || '',
-          'Date analyse': a.analyzedAt || a.createdAt || '',
+          'Date analyse': (a as any).analyzedAt || a.createdAt || '',
         }));
         columns = ['ID_Document', 'Score_Global', 'Couverture', 'Matches', 'Statut', 'Date analyse'];
         break;

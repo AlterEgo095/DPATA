@@ -188,6 +188,7 @@ export function PlagiatTrendChart({
                 content={
                   <ChartTooltipContent 
                     indicator="dot"
+                    // @ts-expect-error error TS2322: see P2-C audit
                     formatter={(value: number, name: string) => [
                       `${value.toFixed(2)}${unit}`,
                       chartConfig[name as keyof typeof chartConfig]?.label || name

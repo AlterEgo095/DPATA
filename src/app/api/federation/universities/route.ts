@@ -48,6 +48,17 @@ const DEFAULT_CONFIG: FederationConfig = {
   autoApproveNewUniversities: false,
 };
 
+// P2-B: Type alias for the stats object returned by the GET route.
+// Previously `let stats = null` inferred type `null` which could not accept
+// the stats object. Now explicitly typed.
+interface FederationListStats {
+  totalUniversities: number;
+  activeUniversities: number;
+  inactiveUniversities: number;
+  totalDocuments: number;
+  config: FederationConfig;
+}
+
 // GET - Lister les universités fédérées
 export async function GET(request: NextRequest) {
   try {
@@ -64,14 +75,17 @@ export async function GET(request: NextRequest) {
 
     // Filtrer par statut si demandé
     if (statusFilter) {
+      // P2-B: u.isActive resolved by adding isActive? to the University
+      // interface in @/lib/federation/types.
       universities = universities.filter(u => 
         u.isActive === (statusFilter === 'active')
       );
     }
 
     // Enrichir avec des statistiques de base si demandé
-    let stats = null;
+    let stats: FederationListStats | null = null;
     if (includeStats) {
+      // P2-B: u.isActive resolved by adding isActive? to University.
       const activeCount = universities.filter(u => u.isActive).length;
       const totalDocs = universities.reduce((sum, u) => sum + (u as any).documentCount || 0, 0);
       
@@ -138,13 +152,24 @@ export async function POST(request: NextRequest) {
       ? `hashed_${Buffer.from(data.apiKey).toString('base64').slice(0, 32)}`
       : '';
 
+    // P2-B: Cast the partial university object to the addUniversity
+    // parameter type. The object literal only provides a subset of the
+    // required University fields (code, name, apiUrl, apiKey, isActive).
+    // The University type now includes apiUrl? and isActive? (added in
+    // P2-B), so these are no longer excess properties. However, many other
+    // required fields (country, city, contactEmail, etc.) are still
+    // missing from this call. The store's addUniversity function spreads
+    // the data and only adds id + createdAt, so missing fields remain
+    // undefined at runtime (existing behavior). The cast preserves this
+    // behavior without requiring a larger refactor of the University type
+    // or the store.
     const university = await addUniversity({
       code: data.code,
       name: data.name,
       apiUrl: data.apiEndpoint,
       apiKey: hashedApiKey,
       isActive: data.status === 'active',
-    });
+    } as unknown as Omit<University, 'id' | 'createdAt'>);
 
     // Retourner la réponse sans la API key hashée
     const responseUniversity = {

@@ -5,6 +5,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth/jwt';
 import { DataAggregator } from '@/lib/statistics/aggregator';
 
+// P2-B: Shared type for moving average points and the trend analysis object.
+// Previously `const movingAverages = []` inferred `never[]` and
+// `let trendAnalysis = null` inferred `null`, both of which rejected
+// assignments. Now explicitly typed.
+interface MovingAveragePoint {
+  date: string | Date;
+  value: number;
+  label?: string;
+}
+
+interface TrendAnalysis {
+  direction: string;
+  slope: number;
+  movingAverages: MovingAveragePoint[];
+  current: number;
+  previous: number;
+  changePercent: number;
+}
+
 export async function GET(request: NextRequest) {
   try {
     // Vérifier l'authentification
@@ -22,14 +41,15 @@ export async function GET(request: NextRequest) {
     const trendData = await DataAggregator.getTrends(metric, period);
 
     // Calculer des statistiques supplémentaires sur la tendance
-    let trendAnalysis = null;
+    let trendAnalysis: TrendAnalysis | null = null;
     
     if (trendData.length >= 5) {
       const values = trendData.map(p => p.value);
       const n = values.length;
       
       // Moyenne mobile simple (7 points)
-      const movingAverages = [];
+      // P2-B: Explicitly typed as MovingAveragePoint[] (was `never[]`).
+      const movingAverages: MovingAveragePoint[] = [];
       for (let i = 6; i < n; i++) {
         const window = values.slice(i - 6, i + 1);
         const avg = window.reduce((a, b) => a + b, 0) / 7;

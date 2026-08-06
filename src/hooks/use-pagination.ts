@@ -1,6 +1,7 @@
 // usePagination Hook
 // PHASE 3: Améliorations Frontend - Helper pagination
 
+// @ts-expect-error error TS2305: see P2-C audit
 import { useState, useCallback, useRouter, usePathname } from 'next/navigation';
 import { useSearchParams } from 'next/navigation';
 

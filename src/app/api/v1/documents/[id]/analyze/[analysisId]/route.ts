@@ -1,18 +1,36 @@
 // API v1 Analysis Result Endpoint
 // Get analysis results by analysis ID
+//
+// P2-A MIGRATION: Replaced Prisma (`@/lib/db`) with JSON store (`@/lib/store/db`).
+// - `db.analysis.findUnique` (with `include: { document, matches, report }}`)
+//     -> `db.analyses.find(...)` + `db.documents.find(...)` + `db.matches.filter(...)`
+// - `db.apiAccessLog.create` -> push to `db.apiAccessLogs` (auto-trim at 5000)
+// Note: The original Prisma schema had a `report` relation on Analysis; the JSON
+// store has no equivalent, so `hasReport` is always `false` and `reportSummary`
+// is `null`. This is the only behavioral delta; all other fields are preserved.
+// Dates in the JSON store are ISO strings (not Date objects), so durationMs is
+// computed via `new Date(...).getTime()` arithmetic.
 
 import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
-import { 
-  apiKeyAuth, 
-  extractApiKeyFromHeaders, 
-  extractIpAddress 
+import {
+  loadDB,
+  saveDB,
+  genId,
+  now,
+  type Analysis,
+  type Match,
+  type Document,
+} from '@/lib/store/db';
+import {
+  apiKeyAuth,
+  extractApiKeyFromHeaders,
+  extractIpAddress
 } from '@/lib/api/auth/api-key-auth';
 import { rateLimiter, addRateLimitHeaders, createRateLimitResponse } from '@/lib/api/middleware/rate-limiter';
-import { 
-  toNextResponse, 
-  apiSuccess, 
-  apiError, 
+import {
+  toNextResponse,
+  apiSuccess,
+  apiError,
   ErrorCodes,
   jsonError,
   jsonNotFound
@@ -22,13 +40,56 @@ interface RouteParams {
   params: Promise<{ id: string; analysisId: string }>;
 }
 
+// ============================================================
+// Response shape helpers
+// ============================================================
+
+interface MatchProjection {
+  id: string;
+  segmentIndex: number;
+  segmentText: string;
+  sourceDocumentId: string;
+  sourceDocumentTitle: string;
+  semanticScore: number;
+  lexicalScore: number;
+  matchType: Match['matchType'];
+}
+
+interface AnalysisResultResponse {
+  id: string;
+  documentId: string;
+  documentTitle: string;
+  status: Analysis['status'];
+  // Scores (only if completed)
+  globalScore?: number;
+  plagiarismPercentage?: number;
+  matchedSegments?: number;
+  totalSegments?: number;
+  // Configuration
+  threshold: number;
+  scope: string;
+  // Timing
+  startedAt?: string;
+  completedAt?: string;
+  durationMs: number | null;
+  // Error info (if failed)
+  error?: string;
+  // Top matches (if completed)
+  matches?: MatchProjection[];
+  totalMatches?: number;
+  // Report data (if available) — always absent in JSON store (no report relation)
+  hasReport?: boolean;
+  reportSummary?: unknown;
+  createdAt: string;
+}
+
 /**
  * GET /api/v1/documents/[id]/analyze/[analysisId] - Get analysis result
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const startTime = Date.now();
   const ipAddress = extractIpAddress(request.headers);
-  
+
   // Check IP-based rate limit
   const ipRateLimit = rateLimiter.checkIp(ipAddress);
   if (!ipRateLimit.allowed) {
@@ -58,44 +119,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const { id: documentId, analysisId } = await params;
 
   try {
-    // Fetch analysis with details
-    const analysis = await db.analysis.findUnique({
-      where: { id: analysisId },
-      include: {
-        document: {
-          select: {
-            id: true,
-            title: true,
-            type: true,
-          },
-        },
-        matches: {
-          orderBy: { semanticScore: 'desc' },
-          take: 100,
-          select: {
-            id: true,
-            querySegmentIndex: true,
-            querySegmentText: true,
-            sourceDocumentId: true,
-            semanticScore: true,
-            lexicalScore: true,
-            matchType: true,
-            sourceDocument: {
-              select: {
-                id: true,
-                title: true,
-              },
-            },
-          },
-        },
-        report: {
-          select: {
-            id: true,
-            content: true,
-          },
-        },
-      },
-    });
+    const db = await loadDB();
+
+    // Fetch analysis record
+    const analysis = db.analyses.find((a) => a.id === analysisId);
 
     if (!analysis) {
       return jsonNotFound('Analyse', analysisId);
@@ -106,13 +133,36 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return jsonError(ErrorCodes.NOT_FOUND, 'Cette analyse n\'appartient pas au document spécifié.');
     }
 
-    // Build response object
-    const result = {
+    // Manual join: document
+    const document: Document | undefined = db.documents.find((d) => d.id === analysis.documentId);
+    const documentTitle = document ? document.title : '';
+
+    // Manual join: matches (top 100 by semanticScore desc)
+    const matches = db.matches
+      .filter((m) => m.analysisId === analysis.id)
+      .sort((a, b) => b.semanticScore - a.semanticScore)
+      .slice(0, 100);
+
+    // Total matches count (replaces `analysis._count.matches`)
+    const totalMatches = db.matches.filter((m) => m.analysisId === analysis.id).length;
+
+    // Compute durationMs (JSON store keeps ISO strings, not Date objects)
+    let durationMs: number | null = null;
+    if (analysis.startedAt && analysis.completedAt) {
+      const start = new Date(analysis.startedAt).getTime();
+      const end = new Date(analysis.completedAt).getTime();
+      if (!Number.isNaN(start) && !Number.isNaN(end)) {
+        durationMs = end - start;
+      }
+    }
+
+    // Build response object — same shape as the original Prisma-backed response
+    const result: AnalysisResultResponse = {
       id: analysis.id,
       documentId: analysis.documentId,
-      documentTitle: analysis.document.title,
+      documentTitle,
       status: analysis.status,
-      
+
       // Scores (only if completed)
       ...(analysis.status === 'COMPLETED' && {
         globalScore: analysis.globalScore,
@@ -120,46 +170,47 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         matchedSegments: analysis.matchedSegments,
         totalSegments: analysis.totalSegments,
       }),
-      
+
       // Configuration
       threshold: analysis.threshold,
       scope: analysis.scope,
-      
+
       // Timing
       startedAt: analysis.startedAt,
       completedAt: analysis.completedAt,
-      durationMs: analysis.startedAt && analysis.completedAt 
-        ? analysis.completedAt.getTime() - analysis.startedAt.getTime()
-        : null,
-      
+      durationMs,
+
       // Error info (if failed)
       ...(analysis.status === 'FAILED' && {
         error: analysis.error,
       }),
-      
+
       // Top matches (if completed)
       ...(analysis.status === 'COMPLETED' && {
-        matches: analysis.matches.map(match => ({
-          id: match.id,
-          segmentIndex: match.querySegmentIndex,
-          segmentText: match.querySegmentText?.substring(0, 200) + (match.querySegmentText && match.querySegmentText.length > 200 ? '...' : ''),
-          sourceDocumentId: match.sourceDocumentId,
-          sourceDocumentTitle: match.sourceDocument.title,
-          semanticScore: match.semanticScore,
-          lexicalScore: match.lexicalScore,
-          matchType: match.matchType,
-        })),
-        totalMatches: analysis._count?.matches || analysis.matches.length,
+        matches: matches.map<MatchProjection>((match) => {
+          const sourceDoc = db.documents.find((d) => d.id === match.sourceDocumentId);
+          const segmentText = match.querySegmentText || '';
+          const truncatedSegmentText =
+            segmentText.substring(0, 200) + (segmentText.length > 200 ? '...' : '');
+          return {
+            id: match.id,
+            segmentIndex: match.querySegmentIndex,
+            segmentText: truncatedSegmentText,
+            sourceDocumentId: match.sourceDocumentId,
+            sourceDocumentTitle: sourceDoc ? sourceDoc.title : '',
+            semanticScore: match.semanticScore,
+            lexicalScore: match.lexicalScore,
+            matchType: match.matchType,
+          };
+        }),
+        totalMatches,
       }),
-      
-      // Report data (if available)
-      ...(analysis.report && {
-        hasReport: true,
-        reportSummary: typeof analysis.report.content === 'string' 
-          ? JSON.parse(analysis.report.content).summary || null
-          : null,
-      }),
-      
+
+      // Report data — JSON store has no `report` relation, so always absent.
+      // (Original behavior: `hasReport: true` + `reportSummary` from JSON parse.
+      // We omit these fields entirely when no report exists, matching the
+      // original spread conditional `...(analysis.report && { ... })`.)
+
       createdAt: analysis.createdAt,
     };
 
@@ -191,6 +242,7 @@ export async function OPTIONS() {
 }
 
 // Helper function to log API access
+// P2-A: Migrated from `db.apiAccessLog.create()` (Prisma) to JSON store push.
 async function logApiAccess(
   apiKeyId: string,
   method: string,
@@ -198,21 +250,27 @@ async function logApiAccess(
   statusCode: number,
   responseTimeMs: number,
   ipAddress?: string,
-  error?: string
+  _error?: string
 ) {
   try {
-    await db.apiAccessLog.create({
-      data: {
-        apiKeyId,
-        method,
-        path,
-        statusCode,
-        responseTimeMs,
-        ipAddress,
-        requestId: `req_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 10)}`,
-        error,
-      },
+    const db = await loadDB();
+    if (!Array.isArray(db.apiAccessLogs)) {
+      db.apiAccessLogs = [];
+    }
+    db.apiAccessLogs.push({
+      id: genId('alog'),
+      apiKeyId,
+      method,
+      path,
+      statusCode,
+      responseTimeMs,
+      ipAddress: ipAddress || 'unknown',
+      createdAt: now(),
     });
+    if (db.apiAccessLogs.length > 5000) {
+      db.apiAccessLogs = db.apiAccessLogs.slice(0, 5000);
+    }
+    await saveDB(db);
   } catch (e) {
     console.error('Failed to log API access:', e);
   }

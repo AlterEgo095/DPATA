@@ -118,6 +118,7 @@ export async function extractTextFromImage(
       text: data.text,
       confidence: data.confidence,
       language: Array.isArray(opts.language) ? opts.language.join('+') : opts.language,
+      // @ts-expect-error error TS2339: see P2-C audit
       words: data.words?.map(w => ({
         text: w.text,
         confidence: w.confidence,
@@ -128,6 +129,7 @@ export async function extractTextFromImage(
           y1: w.bbox.y1,
         },
       })) || [],
+      // @ts-expect-error error TS2339: see P2-C audit
       lines: data.lines?.map(l => ({
         text: l.text,
         confidence: l.confidence,

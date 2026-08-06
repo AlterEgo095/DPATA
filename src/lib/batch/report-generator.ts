@@ -292,7 +292,7 @@ export function exportStatsToCSV(stats: BatchJobStats, jobName: string): string 
     ['Documents Complétés', stats.completedDocs.toString()],
     ['Documents Échoués', stats.failedDocs.toString()],
     ['Documents en Attente', stats.pendingDocs.toString()],
-    ['Score Moyen (%)', stats.avgScore ? (stats.scoreAvg = (stats.avgScore * 100).toFixed(2)) : 'N/A'],
+    ['Score Moyen (%)', stats.avgScore ? ((stats.avgScore * 100).toFixed(2)) : 'N/A'],
     ['Score Médian (%)', stats.medianScore ? (stats.medianScore * 100).toFixed(2) : 'N/A'],
     ['Score Minimum (%)', stats.minScore ? (stats.minScore * 100).toFixed(2) : 'N/A'],
     ['Score Maximum (%)', stats.maxScore ? (stats.maxScore * 100).toFixed(2) : 'N/A'],

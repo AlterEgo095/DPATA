@@ -1,20 +1,35 @@
 // API v1 Analyze Endpoint
 // Trigger plagiarism analysis for a document
+//
+// P2-A MIGRATION: Replaced Prisma (`@/lib/db`) with JSON store (`@/lib/store/db`).
+// - `db.document.findUnique` -> `db.documents.find(...)`
+// - `db.analysis.findFirst`  -> `db.analyses.find(...)`
+// - `db.analysis.create`     -> `db.analyses.push(...)` + `saveDB(db)`
+// - `db.analysis.findMany`   -> `db.analyses.filter(...).sort(...).slice(...)`
+// - `db.apiAccessLog.create` -> push to `db.apiAccessLogs` (auto-trim at 5000)
+// API request/response shapes are unchanged; only the data access layer changed.
 
 import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
-import { 
-  apiKeyAuth, 
-  extractApiKeyFromHeaders, 
-  extractIpAddress 
+import {
+  loadDB,
+  saveDB,
+  genId,
+  now,
+  type Analysis,
+} from '@/lib/store/db';
+import {
+  apiKeyAuth,
+  extractApiKeyFromHeaders,
+  extractIpAddress
 } from '@/lib/api/auth/api-key-auth';
 import { rateLimiter, addRateLimitHeaders, createRateLimitResponse } from '@/lib/api/middleware/rate-limiter';
-import { 
-  toNextResponse, 
-  apiSuccess, 
-  apiError, 
+import {
+  toNextResponse,
+  apiSuccess,
+  apiError,
   apiCreated,
   ErrorCodes,
+  HttpStatus,
   jsonError,
   jsonNotFound
 } from '@/lib/api/response/api-response';
@@ -24,13 +39,41 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
+// ============================================================
+// Response shape helpers
+// ============================================================
+
+interface CreatedAnalysisProjection {
+  id: string;
+  documentId: string;
+  status: Analysis['status'];
+  threshold: number;
+  scope: string;
+  createdAt: string;
+}
+
+interface AnalysisListItem {
+  id: string;
+  status: Analysis['status'];
+  globalScore?: number;
+  matchedSegments?: number;
+  totalSegments?: number;
+  threshold: number;
+  scope: string;
+  startedAt?: string;
+  completedAt?: string;
+  error?: string;
+  createdAt: string;
+  _count: { matches: number };
+}
+
 /**
  * POST /api/v1/documents/[id]/analyze - Trigger analysis
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
   const startTime = Date.now();
   const ipAddress = extractIpAddress(request.headers);
-  
+
   // Check IP-based rate limit
   const ipRateLimit = rateLimiter.checkIp(ipAddress);
   if (!ipRateLimit.allowed) {
@@ -66,12 +109,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   const { id: documentId } = await params;
 
   try {
-    // Check if document exists
-    const document = await db.document.findUnique({
-      where: { id: documentId },
-      select: { id: true, title: true, status: true, textExtract: true },
-    });
+    const db = await loadDB();
 
+    // Check if document exists
+    const document = db.documents.find((d) => d.id === documentId);
     if (!document) {
       return jsonNotFound('Document', documentId);
     }
@@ -79,44 +120,48 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Parse and validate body
     const bodyResult = await parseJsonBody(createAnalysisSchema, request);
     if (!bodyResult.success) {
-      return toNextResponse(bodyResult.error as any);
+      return toNextResponse({ response: bodyResult.error, status: HttpStatus.BAD_REQUEST });
     }
 
     const config = bodyResult.data;
 
     // Check if there's already a running analysis
-    const runningAnalysis = await db.analysis.findFirst({
-      where: {
-        documentId,
-        status: { in: ['PENDING', 'RUNNING'] },
-      },
-    });
+    const runningAnalysis = db.analyses.find(
+      (a) => a.documentId === documentId && (a.status === 'PENDING' || a.status === 'RUNNING')
+    );
 
     if (runningAnalysis) {
       return jsonError(ErrorCodes.CONFLICT, 'Une analyse est déjà en cours pour ce document.', {
-        analysisId: runningAnalysis.id,
-        status: runningAnalysis.status,
+        details: {
+          analysisId: runningAnalysis.id,
+          status: runningAnalysis.status,
+        },
       });
     }
 
-    // Create analysis record
-    const analysis = await db.analysis.create({
-      data: {
-        documentId,
-        triggeredById: authResult.apiKey.createdBy, // Use API key creator as triggerer
-        status: 'PENDING',
-        threshold: config.threshold,
-        scope: config.scope,
-      },
-      select: {
-        id: true,
-        documentId: true,
-        status: true,
-        threshold: true,
-        scope: true,
-        createdAt: true,
-      },
-    });
+    // Create analysis record (push + save)
+    const newAnalysis: Analysis = {
+      id: genId('anl'),
+      documentId,
+      triggeredById: authResult.apiKey.createdBy, // Use API key creator as triggerer
+      status: 'PENDING',
+      threshold: config.threshold,
+      scope: config.scope,
+      createdAt: now(),
+    };
+
+    db.analyses.push(newAnalysis);
+    await saveDB(db);
+
+    // Build response projection (matches original Prisma `select`)
+    const analysis: CreatedAnalysisProjection = {
+      id: newAnalysis.id,
+      documentId: newAnalysis.documentId,
+      status: newAnalysis.status,
+      threshold: newAnalysis.threshold,
+      scope: newAnalysis.scope,
+      createdAt: newAnalysis.createdAt,
+    };
 
     // TODO: Trigger actual analysis job (queue it for background processing)
     // This would typically involve adding to a job queue or triggering a background service
@@ -132,7 +177,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       message: 'Analyse mise en file d\'attente. Utilisez l\'endpoint GET /v1/documents/{id}/analyze/{analysisId} pour suivre le progrès.',
       estimatedTime: '2-5 minutes',
     }));
-    
+
     return addRateLimitHeaders(response, keyRateLimit);
   } catch (error) {
     console.error('Error creating analysis:', error);
@@ -146,7 +191,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   const startTime = Date.now();
   const ipAddress = extractIpAddress(request.headers);
-  
+
   // Check IP-based rate limit
   const ipRateLimit = rateLimiter.checkIp(ipAddress);
   if (!ipRateLimit.allowed) {
@@ -176,38 +221,36 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const { id: documentId } = await params;
 
   try {
-    // Verify document exists
-    const document = await db.document.findUnique({
-      where: { id: documentId },
-      select: { id: true },
-    });
+    const db = await loadDB();
 
+    // Verify document exists
+    const document = db.documents.find((d) => d.id === documentId);
     if (!document) {
       return jsonNotFound('Document', documentId);
     }
 
-    // Get all analyses for this document
-    const analyses = await db.analysis.findMany({
-      where: { documentId },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-      select: {
-        id: true,
-        status: true,
-        globalScore: true,
-        matchedSegments: true,
-        totalSegments: true,
-        threshold: true,
-        scope: true,
-        startedAt: true,
-        completedAt: true,
-        error: true,
-        createdAt: true,
-        _count: {
-          select: { matches: true },
-        },
-      },
-    });
+    // Get all analyses for this document (last 50, by createdAt desc)
+    const analyses: AnalysisListItem[] = db.analyses
+      .filter((a) => a.documentId === documentId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 50)
+      .map<AnalysisListItem>((a) => {
+        const matchCount = db.matches.filter((m) => m.analysisId === a.id).length;
+        return {
+          id: a.id,
+          status: a.status,
+          globalScore: a.globalScore,
+          matchedSegments: a.matchedSegments,
+          totalSegments: a.totalSegments,
+          threshold: a.threshold,
+          scope: a.scope,
+          startedAt: a.startedAt,
+          completedAt: a.completedAt,
+          error: a.error,
+          createdAt: a.createdAt,
+          _count: { matches: matchCount },
+        };
+      });
 
     // Increment usage
     await apiKeyAuth.incrementUsage(authResult.apiKey.id);
@@ -234,6 +277,9 @@ export async function OPTIONS() {
 }
 
 // Helper function to log API access
+// P2-A: Migrated from `db.apiAccessLog.create()` (Prisma) to JSON store push.
+// `error` and `requestId` fields from original Prisma call are dropped because
+// the ApiAccessLogRecord schema in the JSON store does not include them.
 async function logApiAccess(
   apiKeyId: string,
   method: string,
@@ -241,21 +287,27 @@ async function logApiAccess(
   statusCode: number,
   responseTimeMs: number,
   ipAddress?: string,
-  error?: string
+  _error?: string
 ) {
   try {
-    await db.apiAccessLog.create({
-      data: {
-        apiKeyId,
-        method,
-        path,
-        statusCode,
-        responseTimeMs,
-        ipAddress,
-        requestId: `req_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 10)}`,
-        error,
-      },
+    const db = await loadDB();
+    if (!Array.isArray(db.apiAccessLogs)) {
+      db.apiAccessLogs = [];
+    }
+    db.apiAccessLogs.push({
+      id: genId('alog'),
+      apiKeyId,
+      method,
+      path,
+      statusCode,
+      responseTimeMs,
+      ipAddress: ipAddress || 'unknown',
+      createdAt: now(),
     });
+    if (db.apiAccessLogs.length > 5000) {
+      db.apiAccessLogs = db.apiAccessLogs.slice(0, 5000);
+    }
+    await saveDB(db);
   } catch (e) {
     console.error('Failed to log API access:', e);
   }

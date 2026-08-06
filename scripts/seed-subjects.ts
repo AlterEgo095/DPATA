@@ -624,7 +624,7 @@ const biometricsSubjects: Omit<AcademicSubject, 'id' | 'createdAt' | 'updatedAt'
     specialty: "IoT Security",
     level: "Master",
     keywords: "IoT, objets connectés, biométrie, smart home, wearables, authentication",
-    objectifs: "Analyser les défis d'intégration biométrique dans l'écosystème IoT",
+    objectives: "Analyser les défis d'intégration biométrique dans l'écosystème IoT",
     problemStatement: "Peut-on sécuriser tous les objets connectés avec la biométrie ?",
     workType: "TFE",
     status: "VALIDATED",

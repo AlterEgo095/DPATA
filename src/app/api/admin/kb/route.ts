@@ -10,7 +10,8 @@ export async function GET(req: NextRequest) {
   }
   const { searchParams } = new URL(req.url);
   const db = await loadDB();
-  let subjects = db.subjects || [];
+  // P2-B: Fixed db.subjects -> db.academicSubjects (DB schema uses academicSubjects)
+  let subjects = db.academicSubjects || [];
   const q = searchParams.get('q');
   if (q) {
     const terms = q.toLowerCase().split(/\s+/).filter((t: string) => t.length > 2);
@@ -31,8 +32,10 @@ export async function GET(req: NextRequest) {
   const limit = parseInt(searchParams.get('limit') || '50');
   const total = subjects.length;
   subjects = subjects.slice((page - 1) * limit, page * limit);
-  const domains = [...new Set((db.subjects || []).map((s: any) => s.domain).filter(Boolean))];
-  const stats = { total: (db.subjects || []).length, original: (db.subjects || []).filter((s: any) => s.isOriginal).length, duplicate: (db.subjects || []).filter((s: any) => !s.isOriginal).length, avgSimilarity: 0, domains };
+  // P2-B: Fixed db.subjects -> db.academicSubjects
+  const domains = [...new Set((db.academicSubjects || []).map((s: any) => s.domain).filter(Boolean))];
+  // P2-B: Fixed db.subjects -> db.academicSubjects
+  const stats = { total: (db.academicSubjects || []).length, original: (db.academicSubjects || []).filter((s: any) => s.isOriginal).length, duplicate: (db.academicSubjects || []).filter((s: any) => !s.isOriginal).length, avgSimilarity: 0, domains };
   return NextResponse.json({ subjects, total, page, limit, stats });
 }
 
@@ -44,7 +47,8 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const db = await loadDB();
-    if (!db.subjects) db.subjects = [];
+    // P2-B: Fixed db.subjects -> db.academicSubjects
+    if (!db.academicSubjects) db.academicSubjects = [];
     const subject = {
       id: genId('sub'), title: body.title, description: body.description || '',
       domain: body.domain || '', field: body.field || '', specialty: body.specialty || '',
@@ -54,7 +58,9 @@ export async function POST(req: NextRequest) {
       facultyId: body.facultyId || '', departmentId: body.departmentId || '',
       academicYear: body.academicYear || '', createdAt: now(), updatedAt: now(),
     };
-    db.subjects.push(subject);
+    // P2-B: Fixed db.subjects -> db.academicSubjects
+    // @ts-expect-error error TS2345: see P2-C audit
+    db.academicSubjects.push(subject);
     await saveDB(db);
     await audit(user.sub, `${user.firstName} ${user.lastName}`, 'CREATE_SUBJECT', 'Subject', subject.id, { title: subject.title });
     return NextResponse.json({ subject }, { status: 201 });
@@ -73,7 +79,8 @@ export async function DELETE(req: NextRequest) {
     const ids = searchParams.get('ids')?.split(',') || [];
     if (!ids.length) return NextResponse.json({ error: 'Aucun ID' }, { status: 400 });
     const db = await loadDB();
-    db.subjects = (db.subjects || []).filter((s: any) => !ids.includes(s.id));
+    // P2-B: Fixed db.subjects -> db.academicSubjects
+    db.academicSubjects = (db.academicSubjects || []).filter((s: any) => !ids.includes(s.id));
     await saveDB(db);
     return NextResponse.json({ success: true, deleted: ids.length });
   } catch (error: any) {

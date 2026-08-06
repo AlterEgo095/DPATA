@@ -1,5 +1,10 @@
 // GET /api/departments (liste, filtre par facultyId) + POST (création)
 // 🔒 SÉCURITÉ: Validation Zod + gestion d'erreurs complète
+//
+// P2-B: No code changes needed in this file. The TS error
+// "Property 'facultyId' does not exist on type 'JWTPayload'" (line 35) is
+// resolved by adding `facultyId?: string` to the JWTPayload interface in
+// src/lib/auth/jwt.ts (see P2-B fix for that file).
 import { NextRequest, NextResponse } from 'next/server';
 import { loadDB, saveDB, genId, now, audit } from '@/lib/store/db';
 import { getCurrentUser } from '@/lib/auth/jwt';

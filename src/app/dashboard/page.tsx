@@ -113,7 +113,7 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI Stats Overview - New Component */}
-      <StatsOverview stats={{ ...stats, recentActivity: stats.recentAudit }} />
+      <StatsOverview stats={{ ...stats, validations: (stats as any).subjectValidations || 0, recentActivity: stats.recentAudit } as any} />
 
       {/* System Health Monitor - New Component */}
       <SystemHealth

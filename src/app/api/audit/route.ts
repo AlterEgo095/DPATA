@@ -2,7 +2,7 @@
 // PHASE 2: Robustesse Backend - Pagination + Filtres Avancés
 
 import { NextRequest, NextResponse } from 'next/server';
-import { loadDB } from '@/lib/store/db';
+import { loadDB, type AuditLog } from '@/lib/store/db';
 import { getCurrentUser } from '@/lib/auth/jwt';
 import {
   getPaginationParams,
@@ -47,11 +47,20 @@ export async function GET(req: NextRequest) {
     const sortBy = searchParams.get('sortBy') || 'createdAt';
     const sortOrder = (searchParams.get('sortOrder') as 'asc' | 'desc') || 'desc';
 
-    let logs = [...(db.auditLogs || [])];
+    let logs: AuditLog[] = [...(db.auditLogs || [])];
 
     // Apply filters
     if (searchTerm) {
-      logs = filterBySearchTerm(logs, searchTerm, ['userName', 'action', 'entity', 'entityId']);
+      // P2-B: filterBySearchTerm expects Record<string, unknown>[] but logs is
+      // AuditLog[]. AuditLog has no string index signature so it's not
+      // assignable. Cast through unknown to satisfy the utility, then cast
+      // the result back to AuditLog[]. The filter only reads fields by name
+      // (userName, action, entity, entityId) which all exist on AuditLog.
+      logs = filterBySearchTerm(
+        logs as unknown as Record<string, unknown>[],
+        searchTerm,
+        ['userName', 'action', 'entity', 'entityId']
+      ) as unknown as AuditLog[];
     }
     
     if (action) {

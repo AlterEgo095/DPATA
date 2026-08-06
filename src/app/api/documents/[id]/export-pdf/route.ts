@@ -104,6 +104,11 @@ export async function GET(
     // Get analyst info
     const analyst = db.users.find(u => u.id === analysis?.triggeredById);
 
+    // P2-B: Look up the uploader once by uploadedById (Document has
+    // uploadedById, not uploadedBy). Used in both the real-data and
+    // sample-data branches below.
+    const uploader = db.users.find(u => u.id === doc.uploadedById);
+
     // 4. Transform to AnalysisData format
     let analysisData;
 
@@ -115,10 +120,26 @@ export async function GET(
           faculty: db.faculties.find(f => f.id === doc.facultyId),
           department: db.departments.find(d => d.id === doc.departmentId),
           promotion: doc.promotionId ? db.promotions.find(p => p.id === doc.promotionId) : undefined,
-          uploadedBy: db.users.find(u => u.id === doc.uploadedById),
+          // P2-B: Fixed uploadedBy -> uploadedById lookup (Document has
+          // uploadedById, not uploadedBy). Now passes the resolved User
+          // object as `uploadedBy` (the key expected by the transformer).
+          uploadedBy: uploader,
         },
         analysis: {
           ...analysis,
+          // P2-B: Coerce optional number fields to `number | null` (from
+          // `number | undefined`) to match the transformer's expected type.
+          // The DB Analysis type declares these as optional (`?`), but the
+          // PDF transformer expects `number | null`. Using nullish
+          // coalescing to normalize undefined -> null.
+          globalScore: analysis.globalScore ?? null,
+          matchedSegments: analysis.matchedSegments ?? null,
+          totalSegments: analysis.totalSegments ?? null,
+          // P2-B: Convert string timestamps to Date (or null) to match the
+          // transformer's expected `Date | null` type.
+          startedAt: analysis.startedAt ? new Date(analysis.startedAt) : null,
+          completedAt: analysis.completedAt ? new Date(analysis.completedAt) : null,
+          error: analysis.error ?? null,
         },
         matches: matches.map(m => ({
           ...m,
@@ -143,10 +164,19 @@ export async function GET(
           faculty: db.faculties.find(f => f.id === doc.facultyId),
           department: db.departments.find(d => d.id === doc.departmentId),
           promotion: doc.promotionId ? db.promotions.find(p => p.id === doc.promotionId) : undefined,
-          uploadedBy: db.users.find(u => u.id === doc.uploadedById),
+          // P2-B: Fixed uploadedBy -> uploadedById lookup.
+          uploadedBy: uploader,
         },
         analysis: {
           ...analysis,
+          // P2-B: Same type coercions as above (number | undefined -> number | null,
+          // string -> Date | null).
+          globalScore: analysis.globalScore ?? null,
+          matchedSegments: analysis.matchedSegments ?? null,
+          totalSegments: analysis.totalSegments ?? null,
+          startedAt: analysis.startedAt ? new Date(analysis.startedAt) : null,
+          completedAt: analysis.completedAt ? new Date(analysis.completedAt) : null,
+          error: analysis.error ?? null,
         },
         matches: [],
         analyst: analyst ? {
@@ -166,8 +196,11 @@ export async function GET(
         documentSubject: doc.subject || undefined,
         fileName: doc.fileName,
         fileSize: doc.fileSize,
-        authorName: doc.uploadedBy 
-          ? `${db.users.find(u => u.id === doc.uploadedBy)?.firstName || ''} ${db.users.find(u => u.id === doc.uploadedBy)?.lastName || ''}`
+        // P2-B: Fixed uploadedBy -> uploadedById lookup. Uses the
+        // pre-resolved `uploader` User object instead of re-querying
+        // db.users with the non-existent doc.uploadedBy property.
+        authorName: uploader
+          ? `${uploader.firstName} ${uploader.lastName}`
           : 'Inconnu',
         facultyName: db.faculties.find(f => f.id === doc.facultyId)?.name,
         departmentName: db.departments.find(d => d.id === doc.departmentId)?.name,
@@ -206,7 +239,12 @@ export async function GET(
     console.log(`[PDF_EXPORT] Success: ${filename}, size=${(pdfBuffer.length / 1024).toFixed(1)}KB, time=${processingTime}ms`);
 
     // 8. Return PDF response
-    return new NextResponse(pdfBuffer, {
+    // P2-B: Cast pdfBuffer (Buffer) to BodyInit. The NextResponse constructor
+    // expects BodyInit which includes ArrayBufferView/Uint8Array, but TS's
+    // lib defs for Buffer<ArrayBufferLike> don't structurally satisfy the
+    // BodyInit union in this TS config. The cast is safe because Buffer is
+    // a Uint8Array subclass at runtime.
+    return new NextResponse(pdfBuffer as unknown as BodyInit, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',

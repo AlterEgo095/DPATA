@@ -59,6 +59,7 @@ export async function GET(req: NextRequest) {
     let docs = [...db.documents]; // Create copy for sorting
     
     // Role-based filtering
+    // P2-B: user.facultyId is now valid because facultyId? was added to JWTPayload.
     if (user.role === 'STUDENT') {
       docs = docs.filter(d => d.uploadedById === user.sub);
     } else if (user.role === 'TEACHER') {
@@ -74,7 +75,16 @@ export async function GET(req: NextRequest) {
     
     // Search filter
     if (searchTerm) {
-      docs = filterBySearchTerm(docs, searchTerm, ['title', 'subject', 'keywords']);
+      // P2-B: filterBySearchTerm expects Record<string, unknown>[] but docs is
+      // Document[]. Document has no string index signature so it's not
+      // assignable. Cast through unknown to satisfy the utility, then cast
+      // the result back to Document[]. The filter only reads fields by name
+      // (title, subject, keywords) which all exist on Document.
+      docs = filterBySearchTerm(
+        docs as unknown as Record<string, unknown>[],
+        searchTerm,
+        ['title', 'subject', 'keywords']
+      ) as unknown as Doc[];
     }
 
     // Get total before pagination

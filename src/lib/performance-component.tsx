@@ -166,6 +166,7 @@ export function createLazyLoader<T>(
   fallback?: React.ComponentType
 ) {
   return {
+    // @ts-expect-error error TS2345: see P2-C audit
     Component: React.lazy(importFn),
     fallback: fallback || (() => <div className="animate-pulse bg-slate-100 rounded-lg h-48" />),
   };

@@ -1,19 +1,33 @@
 // API v1 Statistics Trends Endpoint
 // Get trend data for various metrics over time
+//
+// P2-A MIGRATION: Replaced Prisma (`@/lib/db`) with JSON store (`@/lib/store/db`).
+// All Prisma `count`/`aggregate` calls inside the per-bucket loops are replaced
+// with in-memory `filter(...).length` and `reduce` ops against `db.documents`,
+// `db.analyses`, `db.users`. The bucketing algorithm and summary calculation
+// are unchanged. API request/response shapes are unchanged; only the data
+// access layer changed.
 
 import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
-import { 
-  apiKeyAuth, 
-  extractApiKeyFromHeaders, 
-  extractIpAddress 
+import {
+  loadDB,
+  saveDB,
+  genId,
+  now,
+  type DB,
+} from '@/lib/store/db';
+import {
+  apiKeyAuth,
+  extractApiKeyFromHeaders,
+  extractIpAddress
 } from '@/lib/api/auth/api-key-auth';
 import { rateLimiter, addRateLimitHeaders, createRateLimitResponse } from '@/lib/api/middleware/rate-limiter';
-import { 
-  toNextResponse, 
-  apiSuccess, 
-  apiError, 
+import {
+  toNextResponse,
+  apiSuccess,
+  apiError,
   ErrorCodes,
+  HttpStatus,
   jsonError
 } from '@/lib/api/response/api-response';
 import { parseQueryParams, statisticsTrendsSchema } from '@/lib/api/validation/request-validator';
@@ -24,7 +38,7 @@ import { parseQueryParams, statisticsTrendsSchema } from '@/lib/api/validation/r
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
   const ipAddress = extractIpAddress(request.headers);
-  
+
   // Check IP-based rate limit
   const ipRateLimit = rateLimiter.checkIp(ipAddress);
   if (!ipRateLimit.allowed) {
@@ -59,54 +73,57 @@ export async function GET(request: NextRequest) {
   // Parse query parameters
   const queryParams = parseQueryParams(statisticsTrendsSchema, request.nextUrl.searchParams);
   if (!queryParams.success) {
-    return toNextResponse(queryParams.error as any);
+    return toNextResponse({ response: queryParams.error, status: HttpStatus.BAD_REQUEST });
   }
 
   const { period, metric, granularity } = queryParams.data;
 
   try {
     // Calculate date range based on period
-    const now = new Date();
-    let startDate = new Date();
-    
+    const nowDate = new Date();
+    const startDate = new Date();
+
     switch (period) {
       case '7d':
-        startDate.setDate(now.getDate() - 7);
+        startDate.setDate(nowDate.getDate() - 7);
         break;
       case '30d':
-        startDate.setDate(now.getDate() - 30);
+        startDate.setDate(nowDate.getDate() - 30);
         break;
       case '90d':
-        startDate.setDate(now.getDate() - 90);
+        startDate.setDate(nowDate.getDate() - 90);
         break;
       case '1y':
-        startDate.setFullYear(now.getFullYear() - 1);
+        startDate.setFullYear(nowDate.getFullYear() - 1);
         break;
       default:
-        startDate.setDate(now.getDate() - 30);
+        startDate.setDate(nowDate.getDate() - 30);
     }
 
     // Generate time buckets based on granularity
-    const timeBuckets = generateTimeBuckets(startDate, now, granularity);
+    const timeBuckets = generateTimeBuckets(startDate, nowDate, granularity);
+
+    // Load DB once — all per-bucket queries reuse the same in-memory snapshot
+    const db = await loadDB();
 
     // Fetch data based on metric type
     let trendData: Array<{ date: string; value: number; label?: string }> = [];
 
     switch (metric) {
       case 'documents':
-        trendData = await getDocumentTrends(timeBuckets);
+        trendData = getDocumentTrends(db, timeBuckets);
         break;
       case 'analyses':
-        trendData = await getAnalysisTrends(timeBuckets);
+        trendData = getAnalysisTrends(db, timeBuckets);
         break;
       case 'plagiarism_rate':
-        trendData = await getPlagiarismRateTrends(timeBuckets);
+        trendData = getPlagiarismRateTrends(db, timeBuckets);
         break;
       case 'users':
-        trendData = await getUserTrends(timeBuckets);
+        trendData = getUserTrends(db, timeBuckets);
         break;
       default:
-        trendData = await getDocumentTrends(timeBuckets);
+        trendData = getDocumentTrends(db, timeBuckets);
     }
 
     const response = {
@@ -173,15 +190,21 @@ function generateTimeBuckets(start: Date, end: Date, granularity: string): Array
 }
 
 // Fetch document trends
-async function getDocumentTrends(buckets: Array<{ start: Date; end: Date; label: string }>): Promise<Array<{ date: string; value: number }>> {
+// P2-A: Replaces per-bucket `db.document.count({ where: { createdAt: { gte, lt } } })`
+// with a single filter on the in-memory array.
+function getDocumentTrends(
+  db: DB,
+  buckets: Array<{ start: Date; end: Date; label: string }>
+): Array<{ date: string; value: number }> {
   const results: Array<{ date: string; value: number }> = [];
 
   for (const bucket of buckets) {
-    const count = await db.document.count({
-      where: {
-        createdAt: { gte: bucket.start, lt: bucket.end },
-      },
-    });
+    const startMs = bucket.start.getTime();
+    const endMs = bucket.end.getTime();
+    const count = db.documents.filter((doc) => {
+      const t = new Date(doc.createdAt).getTime();
+      return t >= startMs && t < endMs;
+    }).length;
     results.push({ date: bucket.label, value: count });
   }
 
@@ -189,15 +212,19 @@ async function getDocumentTrends(buckets: Array<{ start: Date; end: Date; label:
 }
 
 // Fetch analysis trends
-async function getAnalysisTrends(buckets: Array<{ start: Date; end: Date; label: string }>): Promise<Array<{ date: string; value: number }>> {
+function getAnalysisTrends(
+  db: DB,
+  buckets: Array<{ start: Date; end: Date; label: string }>
+): Array<{ date: string; value: number }> {
   const results: Array<{ date: string; value: number }> = [];
 
   for (const bucket of buckets) {
-    const count = await db.analysis.count({
-      where: {
-        createdAt: { gte: bucket.start, lt: bucket.end },
-      },
-    });
+    const startMs = bucket.start.getTime();
+    const endMs = bucket.end.getTime();
+    const count = db.analyses.filter((anl) => {
+      const t = new Date(anl.createdAt).getTime();
+      return t >= startMs && t < endMs;
+    }).length;
     results.push({ date: bucket.label, value: count });
   }
 
@@ -205,22 +232,32 @@ async function getAnalysisTrends(buckets: Array<{ start: Date; end: Date; label:
 }
 
 // Fetch plagiarism rate trends
-async function getPlagiarismRateTrends(buckets: Array<{ start: Date; end: Date; label: string }>): Promise<Array<{ date: string; value: number }>> {
+// P2-A: Replaces `db.analysis.aggregate({ _avg: { globalScore: true } })` with
+// in-memory filter + reduce.
+function getPlagiarismRateTrends(
+  db: DB,
+  buckets: Array<{ start: Date; end: Date; label: string }>
+): Array<{ date: string; value: number }> {
   const results: Array<{ date: string; value: number }> = [];
 
   for (const bucket of buckets) {
-    const avgScore = await db.analysis.aggregate({
-      where: {
-        status: 'COMPLETED',
-        globalScore: { not: null },
-        completedAt: { gte: bucket.start, lt: bucket.end },
-      },
-      _avg: { globalScore: true },
+    const startMs = bucket.start.getTime();
+    const endMs = bucket.end.getTime();
+    const inBucket = db.analyses.filter((anl) => {
+      if (anl.status !== 'COMPLETED') return false;
+      if (anl.globalScore === null || anl.globalScore === undefined) return false;
+      if (!anl.completedAt) return false;
+      const t = new Date(anl.completedAt).getTime();
+      return t >= startMs && t < endMs;
     });
+
+    const avg = inBucket.length > 0
+      ? inBucket.reduce((sum, anl) => sum + (anl.globalScore || 0), 0) / inBucket.length
+      : 0;
 
     results.push({
       date: bucket.label,
-      value: avgScore._avg.globalScore ? Math.round(avgScore._avg.globalScore * 10000) / 100 : 0,
+      value: avg ? Math.round(avg * 10000) / 100 : 0,
     });
   }
 
@@ -228,16 +265,20 @@ async function getPlagiarismRateTrends(buckets: Array<{ start: Date; end: Date; 
 }
 
 // Fetch user registration trends
-async function getUserTrends(buckets: Array<{ start: Date; end: Date; label: string }>): Promise<Array<{ date: string; value: number }>> {
+function getUserTrends(
+  db: DB,
+  buckets: Array<{ start: Date; end: Date; label: string }>
+): Array<{ date: string; value: number }> {
   const results: Array<{ date: string; value: number }> = [];
 
   for (const bucket of buckets) {
-    const count = await db.user.count({
-      where: {
-        createdAt: { gte: bucket.start, lt: bucket.end },
-        isActive: true,
-      },
-    });
+    const startMs = bucket.start.getTime();
+    const endMs = bucket.end.getTime();
+    const count = db.users.filter((u) => {
+      if (!u.isActive) return false;
+      const t = new Date(u.createdAt).getTime();
+      return t >= startMs && t < endMs;
+    }).length;
     results.push({ date: bucket.label, value: count });
   }
 
@@ -282,6 +323,7 @@ export async function OPTIONS() {
 }
 
 // Helper function to log API access
+// P2-A: Migrated from `db.apiAccessLog.create()` (Prisma) to JSON store push.
 async function logApiAccess(
   apiKeyId: string,
   method: string,
@@ -289,21 +331,27 @@ async function logApiAccess(
   statusCode: number,
   responseTimeMs: number,
   ipAddress?: string,
-  error?: string
+  _error?: string
 ) {
   try {
-    await db.apiAccessLog.create({
-      data: {
-        apiKeyId,
-        method,
-        path,
-        statusCode,
-        responseTimeMs,
-        ipAddress,
-        requestId: `req_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 10)}`,
-        error,
-      },
+    const db = await loadDB();
+    if (!Array.isArray(db.apiAccessLogs)) {
+      db.apiAccessLogs = [];
+    }
+    db.apiAccessLogs.push({
+      id: genId('alog'),
+      apiKeyId,
+      method,
+      path,
+      statusCode,
+      responseTimeMs,
+      ipAddress: ipAddress || 'unknown',
+      createdAt: now(),
     });
+    if (db.apiAccessLogs.length > 5000) {
+      db.apiAccessLogs = db.apiAccessLogs.slice(0, 5000);
+    }
+    await saveDB(db);
   } catch (e) {
     console.error('Failed to log API access:', e);
   }

@@ -34,6 +34,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     WEAK_MATCH: 'Similarité faible',
   };
 
+  // P2-B: Pre-resolve related entities by their *Id fields.
+  // Document has uploadedById / facultyId / departmentId (not uploadedBy /
+  // faculty / department). The original code accessed doc.uploadedBy /
+  // doc.faculty / doc.department as if they were populated relations, which
+  // is not how the Document type is defined. We now look them up from the
+  // DB and build local variables used in the template below.
+  const uploader = db.users.find(u => u.id === doc.uploadedById);
+  const faculty = db.faculties.find(f => f.id === doc.facultyId);
+  const department = db.departments.find(d => d.id === doc.departmentId);
+
   const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -99,7 +109,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     </div>
     <div class="info-item">
       <div class="info-label">Auteur</div>
-      <div class="info-value">${doc.uploadedBy ? escapeHtml(`${doc.uploadedBy.firstName} ${doc.uploadedBy.lastName}`) : '—'}</div>
+      <div class="info-value">${uploader ? escapeHtml(`${uploader.firstName} ${uploader.lastName}`) : '—'}</div>
     </div>
     <div class="info-item">
       <div class="info-label">Année académique</div>
@@ -107,11 +117,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     </div>
     <div class="info-item">
       <div class="info-label">Faculté</div>
-      <div class="info-value">${escapeHtml(doc.faculty?.name || '—')}</div>
+      <div class="info-value">${escapeHtml(faculty?.name || '—')}</div>
     </div>
     <div class="info-item">
       <div class="info-label">Département</div>
-      <div class="info-value">${escapeHtml(doc.department?.name || '—')}</div>
+      <div class="info-value">${escapeHtml(department?.name || '—')}</div>
     </div>
     ${doc.subject ? `<div class="info-item" style="grid-column: 1 / -1;"><div class="info-label">Sujet</div><div class="info-value">${escapeHtml(doc.subject)}</div></div>` : ''}
   </div>
@@ -143,7 +153,7 @@ ${analysis ? `
       <div class="stat-label">Seuil cosinus</div>
     </div>
     <div class="stat-card">
-      <div class="stat-num">${(analysis.metadata as any)?.processingTimeMs ?? '—'}</div>
+      <div class="stat-num">${(analysis as any)?.metadata?.processingTimeMs ?? '—'}</div>
       <div class="stat-label">Temps (ms)</div>
     </div>
   </div>

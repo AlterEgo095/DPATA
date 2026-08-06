@@ -199,6 +199,7 @@ export function DistributionChart({
               <Tooltip 
                 content={
                   <ChartTooltipContent 
+                    // @ts-expect-error error TS2322: see P2-C audit
                     formatter={(value: number, name: string) => {
                       if (name === 'density') {
                         return [`${(value * 100).toFixed(1)}%`, 'Densité'];

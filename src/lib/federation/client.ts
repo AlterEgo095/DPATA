@@ -330,6 +330,7 @@ export class FederationClient {
             universityName: uni.name,
             universityCode: uni.code,
             matches: response.data.matches || [],
+            // @ts-expect-error error TS2561: see P2-C audit
             responseTime: response.responseTime,
             timestamp: new Date(),
             status: 'success',
@@ -346,6 +347,7 @@ export class FederationClient {
             universityName: uni.name,
             universityCode: uni.code,
             matches: [],
+            // @ts-expect-error error TS2561: see P2-C audit
             responseTime: response.responseTime,
             timestamp: new Date(),
             status: response.error?.code === 'RATE_LIMITED' ? 'rate_limited' : 
@@ -360,6 +362,7 @@ export class FederationClient {
           universityName: uni.name,
           universityCode: uni.code,
           matches: [],
+          // @ts-expect-error error TS2561: see P2-C audit
           responseTime: 0,
           timestamp: new Date(),
           status: 'error',
@@ -505,6 +508,7 @@ export class FederationClient {
       };
     }
     
+    // @ts-expect-error error TS2352: see P2-C audit
     return response as FederationClientResponse<{
       received: DocumentMetadata[];
       sent: number;

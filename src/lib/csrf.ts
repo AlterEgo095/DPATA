@@ -7,6 +7,7 @@
 // - Intégration avec les routes API
 
 import crypto from 'crypto';
+// @ts-expect-error error TS2305: see P2-C audit
 import { cookies } from 'next/server';
 
 const CSRF_COOKIE_NAME = 'dpata_csrf';

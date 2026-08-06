@@ -1,25 +1,109 @@
 // API v1 Documents Endpoint
 // List and create documents
+//
+// P2-A MIGRATION: Replaced Prisma (`@/lib/db`) with JSON store (`@/lib/store/db`).
+// All Prisma calls (count, findMany, findUnique, create, apiAccessLog.create)
+// translated to in-memory filter/sort/slice/push operations against `db.documents`,
+// `db.faculties`, `db.departments`, `db.users`, `db.analyses`, `db.apiAccessLogs`.
+// API request/response shapes are unchanged; only the data access layer changed.
 
 import { NextRequest } from 'next/server';
-import { db } from '@/lib/db';
-import { 
-  apiKeyAuth, 
-  extractApiKeyFromHeaders, 
-  extractIpAddress 
+import {
+  loadDB,
+  saveDB,
+  genId,
+  now,
+  type Document,
+  type User,
+  type Faculty,
+  type Department,
+} from '@/lib/store/db';
+import {
+  apiKeyAuth,
+  extractApiKeyFromHeaders,
+  extractIpAddress
 } from '@/lib/api/auth/api-key-auth';
 import { rateLimiter, addRateLimitHeaders, createRateLimitResponse } from '@/lib/api/middleware/rate-limiter';
-import { 
-  toNextResponse, 
-  apiSuccess, 
-  apiError, 
-  apiPaginated, 
+import {
+  toNextResponse,
+  apiSuccess,
+  apiError,
+  apiPaginated,
   apiCreated,
   ErrorCodes,
+  HttpStatus,
   jsonError,
   jsonPaginated
 } from '@/lib/api/response/api-response';
 import { parseQueryParams, parseJsonBody, listDocumentsSchema, createDocumentSchema } from '@/lib/api/validation/request-validator';
+
+// ============================================================
+// Response shape helpers (manual projection replacing Prisma `select`)
+// ============================================================
+
+interface UploadedByProjection {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+}
+
+interface FacultyProjection {
+  id: string;
+  name: string;
+  code: string;
+}
+
+interface DepartmentProjection {
+  id: string;
+  name: string;
+  code: string;
+}
+
+interface DocumentListItem {
+  id: string;
+  title: string;
+  type: Document['type'];
+  subject?: string;
+  abstract?: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  status: Document['status'];
+  academicYear: string;
+  createdAt: string;
+  updatedAt: string;
+  uploadedBy: UploadedByProjection | null;
+  faculty: FacultyProjection | null;
+  department: DepartmentProjection | null;
+  _count: { analyses: number };
+}
+
+interface CreatedDocumentProjection {
+  id: string;
+  title: string;
+  type: Document['type'];
+  subject?: string;
+  status: Document['status'];
+  createdAt: string;
+  faculty: { id: string; name: string } | null;
+  department: { id: string; name: string } | null;
+}
+
+function projectUser(u: User | undefined): UploadedByProjection | null {
+  if (!u) return null;
+  return { id: u.id, firstName: u.firstName, lastName: u.lastName, email: u.email };
+}
+
+function projectFaculty(f: Faculty | undefined): FacultyProjection | null {
+  if (!f) return null;
+  return { id: f.id, name: f.name, code: f.code };
+}
+
+function projectDepartment(d: Department | undefined): DepartmentProjection | null {
+  if (!d) return null;
+  return { id: d.id, name: d.name, code: d.code };
+}
 
 /**
  * GET /api/v1/documents - List documents (paginated, filterable)
@@ -27,7 +111,7 @@ import { parseQueryParams, parseJsonBody, listDocumentsSchema, createDocumentSch
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
   const ipAddress = extractIpAddress(request.headers);
-  
+
   // Check IP-based rate limit
   const ipRateLimit = rateLimiter.checkIp(ipAddress);
   if (!ipRateLimit.allowed) {
@@ -57,59 +141,75 @@ export async function GET(request: NextRequest) {
   // Parse query parameters
   const queryParams = parseQueryParams(listDocumentsSchema, request.nextUrl.searchParams);
   if (!queryParams.success) {
-    return toNextResponse(queryParams.error as any);
+    // queryParams.error is ApiResponse<never> (the response body); toNextResponse
+    // expects the wrapped { response, status } form. Validation errors are 400.
+    return toNextResponse({ response: queryParams.error, status: HttpStatus.BAD_REQUEST });
   }
 
   const { page, perPage, status, type, facultyId, departmentId, search, sortBy, sortOrder } = queryParams.data;
 
-  // Build where clause
-  const where: Record<string, any> = {};
-  if (status) where.status = status;
-  if (type) where.type = type;
-  if (facultyId) where.facultyId = facultyId;
-  if (departmentId) where.departmentId = departmentId;
-  if (search) {
-    where.OR = [
-      { title: { contains: search } },
-      { subject: { contains: search } },
-    ];
-  }
+  // Load DB once and filter in-memory (replaces Prisma where/count/findMany)
+  const db = await loadDB();
 
-  // Get total count
-  const total = await db.document.count({ where });
+  // Build filtered set
+  let docs: Document[] = db.documents.filter((doc) => {
+    if (status && doc.status !== status) return false;
+    if (type && doc.type !== type) return false;
+    if (facultyId && doc.facultyId !== facultyId) return false;
+    if (departmentId && doc.departmentId !== departmentId) return false;
+    if (search) {
+      const term = search.toLowerCase();
+      const inTitle = doc.title.toLowerCase().includes(term);
+      const inSubject = doc.subject ? doc.subject.toLowerCase().includes(term) : false;
+      if (!inTitle && !inSubject) return false;
+    }
+    return true;
+  });
 
-  // Get paginated results
-  const documents = await db.document.findMany({
-    where,
-    orderBy: { [sortBy]: sortOrder },
-    skip: (page - 1) * perPage,
-    take: perPage,
-    select: {
-      id: true,
-      title: true,
-      type: true,
-      subject: true,
-      abstract: true,
-      fileName: true,
-      fileSize: true,
-      mimeType: true,
-      status: true,
-      academicYear: true,
-      createdAt: true,
-      updatedAt: true,
-      uploadedBy: {
-        select: { id: true, firstName: true, lastName: true, email: true },
-      },
-      faculty: {
-        select: { id: true, name: true, code: true },
-      },
-      department: {
-        select: { id: true, name: true, code: true },
-      },
-      _count: {
-        select: { analyses: true },
-      },
-    },
+  // Sort
+  const sortDir = sortOrder === 'asc' ? 1 : -1;
+  docs = docs.sort((a, b) => {
+    if (sortBy === 'title') return a.title.localeCompare(b.title) * sortDir;
+    if (sortBy === 'updatedAt') {
+      const cmp = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+      return cmp * sortDir;
+    }
+    // default: createdAt
+    const cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    return cmp * sortDir;
+  });
+
+  const total = docs.length;
+
+  // Pagination
+  const skip = (page - 1) * perPage;
+  const paginated = docs.slice(skip, skip + perPage);
+
+  // Build response with manual joins (replaces Prisma `select` + relations)
+  const documents: DocumentListItem[] = paginated.map((doc) => {
+    const uploadedBy = projectUser(db.users.find((u) => u.id === doc.uploadedById));
+    const faculty = projectFaculty(db.faculties.find((f) => f.id === doc.facultyId));
+    const department = projectDepartment(db.departments.find((d) => d.id === doc.departmentId));
+    const analysesCount = db.analyses.filter((a) => a.documentId === doc.id).length;
+
+    return {
+      id: doc.id,
+      title: doc.title,
+      type: doc.type,
+      subject: doc.subject,
+      abstract: doc.abstract,
+      fileName: doc.fileName,
+      fileSize: doc.fileSize,
+      mimeType: doc.mimeType,
+      status: doc.status,
+      academicYear: doc.academicYear,
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
+      uploadedBy,
+      faculty,
+      department,
+      _count: { analyses: analysesCount },
+    };
   });
 
   // Increment usage and log
@@ -125,7 +225,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
   const ipAddress = extractIpAddress(request.headers);
-  
+
   // Check IP-based rate limit
   const ipRateLimit = rateLimiter.checkIp(ipAddress);
   if (!ipRateLimit.allowed) {
@@ -160,54 +260,62 @@ export async function POST(request: NextRequest) {
   // Parse and validate body
   const bodyResult = await parseJsonBody(createDocumentSchema, request);
   if (!bodyResult.success) {
-    return toNextResponse(bodyResult.error as any);
+    return toNextResponse({ response: bodyResult.error, status: HttpStatus.BAD_REQUEST });
   }
 
   const data = bodyResult.data;
 
   try {
+    const db = await loadDB();
+
     // Verify referenced entities exist
-    const faculty = await db.faculty.findUnique({ where: { id: data.facultyId } });
+    const faculty = db.faculties.find((f) => f.id === data.facultyId);
     if (!faculty) {
-      return jsonError(ErrorCodes.INVALID_PARAMETER, 'Faculté non trouvée.', { field: 'facultyId' });
+      return jsonError(ErrorCodes.INVALID_PARAMETER, 'Faculté non trouvée.', { details: { field: 'facultyId' } });
     }
 
-    const department = await db.department.findUnique({ where: { id: data.departmentId } });
+    const department = db.departments.find((d) => d.id === data.departmentId);
     if (!department) {
-      return jsonError(ErrorCodes.INVALID_PARAMETER, 'Département non trouvé.', { field: 'departmentId' });
+      return jsonError(ErrorCodes.INVALID_PARAMETER, 'Département non trouvé.', { details: { field: 'departmentId' } });
     }
 
-    // Create document
-    const document = await db.document.create({
-      data: {
-        title: data.title,
-        type: data.type,
-        subject: data.subject,
-        abstract: data.abstract,
-        textExtract: data.content, // Store content for analysis
-        filePath: '', // Will be set when file is uploaded
-        fileName: `${data.title.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.txt`,
-        fileSize: data.content ? Buffer.byteLength(data.content) : 0,
-        mimeType: 'text/plain',
-        status: 'SUBMITTED',
-        facultyId: data.facultyId,
-        departmentId: data.departmentId,
-        promotionId: data.promotionId,
-        academicYear: data.academicYear,
-        keywords: data.keywords ? JSON.stringify(data.keywords) : null,
-        uploadedById: data.uploadedById,
-      },
-      select: {
-        id: true,
-        title: true,
-        type: true,
-        subject: true,
-        status: true,
-        createdAt: true,
-        faculty: { select: { id: true, name: true } },
-        department: { select: { id: true, name: true } },
-      },
-    });
+    // Create document (push to in-memory array, then save)
+    const timestamp = now();
+    const newDoc: Document = {
+      id: genId('doc'),
+      title: data.title,
+      type: data.type,
+      subject: data.subject,
+      abstract: data.abstract,
+      textExtract: data.content, // Store content for analysis
+      fileName: `${data.title.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.txt`,
+      fileSize: data.content ? Buffer.byteLength(data.content) : 0,
+      mimeType: 'text/plain',
+      status: 'SUBMITTED',
+      facultyId: data.facultyId,
+      departmentId: data.departmentId,
+      promotionId: data.promotionId,
+      academicYear: data.academicYear,
+      keywords: data.keywords ? JSON.stringify(data.keywords) : undefined,
+      uploadedById: data.uploadedById,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+
+    db.documents.push(newDoc);
+    await saveDB(db);
+
+    // Build response projection (matches original Prisma `select`)
+    const document: CreatedDocumentProjection = {
+      id: newDoc.id,
+      title: newDoc.title,
+      type: newDoc.type,
+      subject: newDoc.subject,
+      status: newDoc.status,
+      createdAt: newDoc.createdAt,
+      faculty: { id: faculty.id, name: faculty.name },
+      department: { id: department.id, name: department.name },
+    };
 
     // Increment usage
     await apiKeyAuth.incrementUsage(authResult.apiKey.id);
@@ -237,6 +345,9 @@ export async function OPTIONS() {
 }
 
 // Helper function to log API access
+// P2-A: Migrated from `db.apiAccessLog.create()` (Prisma) to JSON store push.
+// Note: `error` and `requestId` fields from original Prisma call are dropped
+// because the ApiAccessLogRecord schema in the JSON store does not include them.
 async function logApiAccess(
   apiKeyId: string,
   method: string,
@@ -244,21 +355,29 @@ async function logApiAccess(
   statusCode: number,
   responseTimeMs: number,
   ipAddress?: string,
-  error?: string
+  _error?: string
 ) {
   try {
-    await db.apiAccessLog.create({
-      data: {
-        apiKeyId,
-        method,
-        path,
-        statusCode,
-        responseTimeMs,
-        ipAddress,
-        requestId: `req_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 10)}`,
-        error,
-      },
+    const db = await loadDB();
+    if (!Array.isArray(db.apiAccessLogs)) {
+      // Defensive: ensure the array exists (store_db_patch added it but be safe)
+      db.apiAccessLogs = [];
+    }
+    db.apiAccessLogs.push({
+      id: genId('alog'),
+      apiKeyId,
+      method,
+      path,
+      statusCode,
+      responseTimeMs,
+      ipAddress: ipAddress || 'unknown',
+      createdAt: now(),
     });
+    // Auto-trim to keep the file manageable (mirrors store/db.ts audit() pattern)
+    if (db.apiAccessLogs.length > 5000) {
+      db.apiAccessLogs = db.apiAccessLogs.slice(0, 5000);
+    }
+    await saveDB(db);
   } catch (e) {
     // Don't fail the request if logging fails
     console.error('Failed to log API access:', e);

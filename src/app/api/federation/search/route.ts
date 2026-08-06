@@ -8,7 +8,11 @@ import { getUniversities } from '@/lib/federation/store';
 import { detectPlagiat } from '@/lib/ia/engine';
 import { loadDB } from '@/lib/store/db';
 import type { 
-  FederationMatch, 
+  // P2-B: Fixed import — the type is named `FederatedMatch` (not
+  // `FederationMatch`) in @/lib/federation/types. The old import used the
+  // wrong name which caused "no exported member named 'FederationMatch'"
+  // and left the `FederatedMatch` type usages below unresolved.
+  FederatedMatch, 
   FederatedSearchResult, 
   FederationSearchResponse,
   MatchType,
@@ -245,6 +249,8 @@ export async function POST(request: NextRequest) {
     const allUnis = await getUniversities();
     const targetUnis = requestedUnis.length > 0
       ? allUnis.filter(u => requestedUnis.includes(u.id))
+      // P2-B: u.isActive is now valid because isActive? was added to the
+      // University interface in @/lib/federation/types.
       : allUnis.filter(u => u.isActive);
 
     if (targetUnis.length === 0) {

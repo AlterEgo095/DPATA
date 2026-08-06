@@ -331,7 +331,7 @@ export class ApiKeyAuth {
       apiKeys[idx].isValid = false
       await saveDB(db)
     }
-    logger.info('API key revoked', { apiKeyId })
+    logger.info('API key revoked', { keyId })
   }
 
   /**

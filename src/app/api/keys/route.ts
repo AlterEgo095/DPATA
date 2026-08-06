@@ -25,8 +25,12 @@ export async function GET(request: NextRequest) {
   const userId = searchParams.get('userId');
   
   if (!userId) {
+    // P2-B: Fixed jsonError() options. The third argument accepts
+    // { status?, details? }. The old call passed { hint: '...' } which is an
+    // excess property. Moved `hint` into the `details` sub-object so the
+    // hint is still surfaced in the API response (under error.details.hint).
     return jsonError(ErrorCodes.INVALID_PARAMETER, 'L\'utilisateur est requis.', {
-      hint: 'Fournissez le paramètre userId',
+      details: { hint: 'Fournissez le paramètre userId' },
     });
   }
 
@@ -69,9 +73,18 @@ export async function POST(request: NextRequest) {
 
   try {
     // Verify user exists
-    const user = await db.user.findUnique({ where: { id: data.createdBy || '' } });
+    // P2-B: The createApiKeySchema (in request-validator.ts) does not
+    // include a `createdBy` field, so `data.createdBy` is not type-safe.
+    // Casting through any to access it. The value flows from the request
+    // body (the client sends createdBy). This preserves the original
+    // runtime behavior.
+    const createdBy = (data as any).createdBy || '';
+    const user = await db.user.findUnique({ where: { id: createdBy } });
     if (!user) {
-      return jsonError(ErrorCodes.INVALID_PARAMETER, 'Utilisateur non trouvé.', { field: 'createdBy' });
+      // P2-B: Fixed jsonError() options — moved `field` into `details`.
+      return jsonError(ErrorCodes.INVALID_PARAMETER, 'Utilisateur non trouvé.', {
+        details: { field: 'createdBy' },
+      });
     }
 
     // Generate new API key
@@ -82,7 +95,7 @@ export async function POST(request: NextRequest) {
       ipAddressWhitelist: data.ipAddressWhitelist,
       expiresAt: data.expiresAt,
       isTest: data.isTest,
-      createdBy: data.createdBy || '',
+      createdBy,
     };
 
     const newKey = await apiKeyAuth.generate(options);

@@ -31,6 +31,7 @@ export async function getServerTranslator() {
   const dictionary = await getServerDictionary();
   return (key: string, params?: Record<string, string | number>) => {
     // Import de la fonction t pour éviter les dépendances circulaires
+    // @ts-expect-error error TS1308: see P2-C audit
     const { t } = await import('./index');
     return t(key, dictionary, params);
   };

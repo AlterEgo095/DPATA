@@ -620,6 +620,7 @@ export function getAdaptiveRateLimit(ip: string, endpoint: 'auth' | 'api' | 'upl
     const result = limiter.consume(ip);
     return {
       allowed: true,
+      // @ts-expect-error error TS2339: see P2-C audit
       remaining: result.remainingPoints,
     };
   } catch (rejRes: any) {

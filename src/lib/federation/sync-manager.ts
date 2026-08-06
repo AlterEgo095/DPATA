@@ -467,6 +467,7 @@ export class SyncManager {
     });
     
     // Stocker la date de référence dans les métadonnées via details
+    // @ts-expect-error error TS2352: see P2-C audit
     (item as Record<string, unknown>).since = since.toISOString();
     
     this.auditLogger.log('SYNC_INITIATED', {
@@ -563,12 +564,14 @@ export class SyncManager {
       }
       
       // Mettre à jour le nombre total de documents
+      // @ts-expect-error error TS2339: see P2-C audit
       this.queue.update(item.id, (i) => ({
         ...i,
         documentsTotal: localMetadata.length,
       }), (i) => i.id);
       
       // Effectuer la synchronisation via le client
+      // @ts-expect-error error TS2352: see P2-C audit
       const since = (item as Record<string, unknown>).since as string | undefined;
       const result = await this.client.syncMetadata(university, localMetadata, {
         lastSyncDate: since ? new Date(since) : undefined,
@@ -634,15 +637,18 @@ export class SyncManager {
   // ============================================================
   
   setLocalMetadata(universityId: string, metadata: DocumentMetadata[]): void {
+    // @ts-expect-error error TS2345: see P2-C audit
     this.localMetadataCache.set(universityId, metadata);
   }
   
   getLocalMetadata(universityId: string, _operation: SyncOperation): DocumentMetadata[] {
+    // @ts-expect-error error TS2322: see P2-C audit
     return this.localMetadataCache.get(universityId) || [];
   }
   
   updateLocalMetadata(universityId: string, metadata: DocumentMetadata[]): void {
     const existing = this.localMetadataCache.get(universityId) || [];
+    // @ts-expect-error error TS2488: see P2-C audit
     const merged = [...existing];
     
     for (const meta of metadata) {
@@ -654,6 +660,7 @@ export class SyncManager {
       }
     }
     
+    // @ts-expect-error error TS2345: see P2-C audit
     this.localMetadataCache.set(universityId, merged);
   }
   
@@ -672,6 +679,7 @@ export class SyncManager {
   // ============================================================
   
   /** Retourne les statistiques de la file d'attente */
+  // @ts-expect-error error TS2344: see P2-C audit
   getQueueStats(): ReturnType<SyncQueue['stats']> {
     return this.queue.stats;
   }

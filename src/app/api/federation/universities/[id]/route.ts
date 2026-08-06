@@ -12,10 +12,14 @@ import { getFederationClient } from '@/lib/federation/client';
 import type { University, UniversityStats, SyncQueueItem } from '@/lib/federation/types';
 import { z } from 'zod';
 
+// P2-B: Fixed ExtendedUniversity interface.
+// The original declared `lastSyncStatus: string | null` which conflicts with
+// the parent University's `lastSyncStatus: 'success' | 'failed' | 'pending' | null`.
+// TS errors because `string` is wider than the parent's union. Now narrowed
+// to match the parent type. The `documentCount` and `lastSyncAt` fields are
+// already declared on University (same types), so they're inherited cleanly.
 interface ExtendedUniversity extends University {
-  documentCount: number;
-  lastSyncAt: Date | null;
-  lastSyncStatus: string | null;
+  lastSyncStatus: 'success' | 'failed' | 'pending' | null;
 }
 
 // ============================================================
@@ -48,7 +52,7 @@ async function findUniversity(id: string): Promise<{ university: ExtendedUnivers
     documentCount: [1234, 856, 432, 0][i] || 0,
     lastSyncAt: i === 0 ? new Date(Date.now() - 2 * 60 * 60 * 1000) : 
                i === 1 ? new Date(Date.now() - 6 * 60 * 60 * 1000) : null,
-    lastSyncStatus: ['success', 'success', 'failed', null][i] || null,
+    lastSyncStatus: ['success', 'success', 'failed', null][i] as 'success' | 'failed' | 'pending' | null,
     createdAt: u.createdAt,
     updatedAt: new Date(),
   }));
@@ -71,6 +75,8 @@ async function generateMockStats(university: ExtendedUniversity): Promise<Univer
     searchCountToday: Math.floor(Math.random() * 50),
     searchCountTotal: Math.floor(Math.random() * 5000),
     matchRate: 0.05 + Math.random() * 0.15,
+    // P2-B: university.isActive is now valid because isActive? was added to
+    // the University interface (which ExtendedUniversity extends).
     status: university.isActive ? 'active' : 'inactive',
     uptimePercentage: 95 + Math.random() * 5,
   };
@@ -108,6 +114,7 @@ export async function GET(
     const includeStats = searchParams.get('stats') !== 'false'; // Stats par défaut
 
     let stats: UniversityStats | undefined;
+    // P2-B: university.isActive resolved by adding isActive? to University.
     if (includeStats && university.isActive) {
       stats = await generateMockStats(university);
     }
@@ -312,6 +319,7 @@ export async function POST(
         // Simulation du health check
         // En production: const healthResult = await client.healthCheck(university);
         
+        // P2-B: university.isActive resolved by adding isActive? to University.
         const isSimulatedSuccess = university.isActive || Math.random() > 0.3;
         
         return NextResponse.json({
@@ -349,6 +357,7 @@ export async function POST(
 
         return NextResponse.json({
           success: true,
+          // P2-B: university.isActive resolved by adding isActive? to University.
           previousStatus: university.isActive ? 'active' : 'inactive',
           newStatus,
           message: `Université ${newStatus === 'active' ? 'activée' : 'désactivée'}`,

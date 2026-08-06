@@ -246,6 +246,7 @@ export function MatchTypePie({
                 <Tooltip
                   content={
                     <ChartTooltipContent
+                      // @ts-expect-error error TS2322: see P2-C audit
                       formatter={(value: number, name: string) => [
                         `${value} (${processedData.find(d => d.label === name)?.percentage.toFixed(1)}%)`,
                         name

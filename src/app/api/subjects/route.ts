@@ -58,11 +58,21 @@ export async function GET(req: NextRequest) {
     const sortBy = searchParams.get('sortBy') || 'createdAt';
     const sortOrder = (searchParams.get('sortOrder') as 'asc' | 'desc') || 'desc';
 
-    let subjects = db.academicSubjects || [];
+    let subjects: AcademicSubject[] = db.academicSubjects || [];
     
     // Apply filters
     if (searchTerm) {
-      subjects = filterBySearchTerm(subjects, searchTerm, ['title', 'description', 'keywords', 'domain']);
+      // P2-B: filterBySearchTerm expects Record<string, unknown>[] but
+      // subjects is AcademicSubject[]. AcademicSubject has no string index
+      // signature so it's not assignable. Cast through unknown to satisfy
+      // the utility, then cast the result back to AcademicSubject[]. The
+      // filter only reads fields by name (title, description, keywords,
+      // domain) which all exist on AcademicSubject.
+      subjects = filterBySearchTerm(
+        subjects as unknown as Record<string, unknown>[],
+        searchTerm,
+        ['title', 'description', 'keywords', 'domain']
+      ) as unknown as AcademicSubject[];
     }
     if (domain) subjects = subjects.filter(s => s.domain?.toLowerCase().includes(domain.toLowerCase()));
     if (facultyId) subjects = subjects.filter(s => s.facultyId === facultyId);

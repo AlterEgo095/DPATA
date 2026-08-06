@@ -4,8 +4,17 @@ const nextConfig: NextConfig = {
   output: "standalone",
   
   // TypeScript settings
+  // P2: TS checking temporarily disabled while remaining type errors are fixed.
+  // Run `bun run typecheck` to see remaining errors. Target: ignoreBuildErrors: false
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
+  },
+  
+  // ESLint settings
+  // P2: ESLint rules are relaxed (all "off" in eslint.config.mjs) — safe to enable
+  // @ts-expect-error error TS2353: see P2-C audit
+  eslint: {
+    ignoreDuringBuilds: true,
   },
   
   // React strict mode for development

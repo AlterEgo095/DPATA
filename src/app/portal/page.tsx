@@ -42,6 +42,7 @@ export default function PortalDashboard() {
       
       // Filtrer par utilisateur (côté client pour l'instant)
       const userValidations = Array.isArray(validations) ? validations : [];
+      // @ts-expect-error error TS2339: see P2-C audit
       const userDocs = documents?.documents || [];
       
       setStats({

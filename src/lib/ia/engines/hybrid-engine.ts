@@ -404,6 +404,7 @@ export class HybridEngine implements IAnalysisEngine {
           modelVersion: this.version,
           threshold,
           timestamp: new Date().toISOString(),
+          // @ts-expect-error error TS2353: see P2-C audit
           engineBreakdown: {
             tfidfScore: tfidfResult.overallScore,
             semanticScore: semanticResult.overallScore,

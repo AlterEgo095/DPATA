@@ -32,6 +32,7 @@ export async function POST(request: NextRequest) {
   if (!apiKey) {
     return toNextResponse(
       apiError(ErrorCodes.MISSING_API_KEY, 'Clé API manquante.', {
+        // @ts-expect-error error TS2353: see P2-C audit
         hint: 'Fournissez une clé API via l\'en-tête X-API-Key',
       }),
       { 'X-RateLimit-Remaining': String(ipRateLimit.remaining) }

@@ -9,7 +9,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Accès non autorisé' }, { status: 403 });
   }
   const db = await loadDB();
-  const subjects = (db.subjects || []).map((s: any) => ({
+  // P2-B: Fixed db.subjects -> db.academicSubjects (DB schema uses academicSubjects)
+  const subjects = (db.academicSubjects || []).map((s: any) => ({
     title: s.title,
     description: s.description,
     domain: s.domain,

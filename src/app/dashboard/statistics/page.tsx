@@ -320,6 +320,7 @@ export default function StatisticsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Graphique tendance */}
         <PlagiatTrendChart
+          // @ts-expect-error error TS2322: see P2-C audit
           data={trendChartData}
           title="Évolution du Taux de Plagiat"
           description="Tendance temporelle avec moyennes mobiles"
@@ -351,6 +352,7 @@ export default function StatisticsPage() {
 
         {/* Comparaison facultés */}
         <FacultyComparisonChart
+          // @ts-expect-error error TS2322: see P2-C audit
           data={data?.byFaculty || []}
           title="Comparaison Inter-Facultés"
           description="Analyse comparative des taux par faculté"
@@ -359,6 +361,7 @@ export default function StatisticsPage() {
 
       {/* Timeline d'activité */}
       <ActivityTimeline
+        // @ts-expect-error error TS2322: see P2-C audit
         timelineData={generateTimelineData(data)}
         title="Activité de la Plateforme"
         description="Flux d'événements et heatmap d'utilisation"

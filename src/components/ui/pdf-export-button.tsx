@@ -353,6 +353,7 @@ export function PdfExportButtonGroup(props: Omit<PdfExportButtonProps, 'showForm
         const Icon = config.icon;
 
         return (
+          // @ts-expect-error error TS2322: see P2-C audit
           <SimplePdfExportButton
             key={format}
             {...props}

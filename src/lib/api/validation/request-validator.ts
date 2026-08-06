@@ -56,7 +56,7 @@ export function validateAndSanitize<T>(
     const result = schema.safeParse(processedData);
     
     if (!result.success) {
-      const formattedErrors = result.error.errors.map(err => ({
+      const formattedErrors = result.error.issues.map(err => ({
         field: err.path.join('.'),
         message: err.message,
         code: err.code,

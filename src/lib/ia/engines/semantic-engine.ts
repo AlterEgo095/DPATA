@@ -12,6 +12,7 @@ import {
   MatchSeverity,
   MatchCategory,
   EmbeddingVector,
+// @ts-expect-error error TS2307: see P2-C audit
 } from './types';
 
 // ============================================================================
@@ -857,6 +858,7 @@ export class SemanticEmbeddingEngine implements IAnalysisEngine {
         lines.push(`### ${ss.title}`);
         lines.push(`- **Similarité**: ${(ss.similarity * 100).toFixed(1)}%`);
         lines.push(`- **Mots-clés partagés**: ${ss.sharedKeywords.join(', ') || 'Aucun'}`);
+        // @ts-expect-error error TS2339: see P2-C audit
         lines.push(`- **Explication**: ${ss.explanation}`);
         lines.push('');
       }

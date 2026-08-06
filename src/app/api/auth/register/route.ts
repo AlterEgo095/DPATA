@@ -30,7 +30,11 @@ export async function POST(req: NextRequest) {
   try {
     // Rate limiting - 5 registrations per hour per IP
     const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
-    const rateLimit = rateLimiter.check(ip, 5, 3600000); // 5 requests per hour
+    // P2-B: Fixed rateLimiter.check() call signature.
+    // The method signature is check(identifier, config?: Partial<RateLimitConfig>).
+    // The old call passed (ip, maxRequests, windowMs) as 3 positional args which
+    // is invalid. Now passes a single config object as the 2nd argument.
+    const rateLimit = rateLimiter.check(ip, { maxRequests: 5, windowMs: 3600000 });
     
     if (!rateLimit.allowed) {
       return createRateLimitResponse(rateLimit);
@@ -67,8 +71,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Force fresh DB read to ensure we have latest data
-    const db = await loadDB(true);
+    // P2-B: Fixed loadDB() call — loadDB takes no arguments (signature is
+    // `loadDB(): Promise<DB>`). The old `loadDB(true)` was passing a
+    // bogus force-refresh flag that doesn't exist on the JSON store.
+    const db = await loadDB();
     
     // Check for existing email (case-insensitive)
     if (db.users.some(u => u.email.toLowerCase() === sanitizedData.email.toLowerCase())) {
@@ -90,18 +96,22 @@ export async function POST(req: NextRequest) {
     const passwordHash = await hashPassword(parsed.data.password);
 
     // Create new STUDENT user (self-registration only allows student role)
+    // P2-B: Fixed null vs undefined for optional User fields.
+    // The User interface declares matricule/facultyId/departmentId/promotionId
+    // as `string | undefined` (optional). Using `null` made the object
+    // unassignable to User. Now uses `undefined` consistently.
     const newUser = {
       id: genId('usr'),
       email: sanitizedData.email,
       passwordHash,
       firstName: sanitizedData.firstName,
       lastName: sanitizedData.lastName,
-      matricule: sanitizedData.matricule,
+      matricule: sanitizedData.matricule ?? undefined,
       role: 'STUDENT' as UserRole, // Force STUDENT role for self-registration
       isActive: true,
-      facultyId: sanitizedData.facultyId || null,
-      departmentId: null,
-      promotionId: null,
+      facultyId: sanitizedData.facultyId || undefined,
+      departmentId: undefined,
+      promotionId: undefined,
       createdAt: now(),
       updatedAt: now(),
     };

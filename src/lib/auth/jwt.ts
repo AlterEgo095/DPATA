@@ -53,6 +53,9 @@ export interface JWTPayload {
   role: UserRole;
   firstName: string;
   lastName: string;
+  // P2-B: Added facultyId to support faculty-scoped filtering in API routes
+  // (departments, documents, users). Optional because not all roles have a faculty.
+  facultyId?: string;
   iat?: number;
   exp?: number;
 }
@@ -72,6 +75,7 @@ export async function signToken(user: User): Promise<string> {
     role: user.role,
     firstName: user.firstName,
     lastName: user.lastName,
+    facultyId: user.facultyId,
   })
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
