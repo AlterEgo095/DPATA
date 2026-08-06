@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Plus, Search, Loader2, Pencil, Trash2, Upload, TrendingUp, Database,
-  CheckCircle2, XCircle, Lightbulb, RefreshCw, FileDown
+  CheckCircle2, XCircle, Lightbulb
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -21,7 +21,7 @@ interface Subject {
   id: string; title: string; description?: string; domain?: string;
   field?: string; level?: string; keywords?: string; objectives?: string;
   problemStatement?: string; academicYear?: string; authorName?: string;
-  workType?: string; status?: string; createdAt: string;
+  workType?: string; createdAt: string;
 }
 
 interface Stats {
@@ -38,7 +38,6 @@ export default function SubjectsPage() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Subject | null>(null);
@@ -47,32 +46,20 @@ export default function SubjectsPage() {
   const [importText, setImportText] = useState('');
   const [importing, setImporting] = useState(false);
 
-  const load = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    else setRefreshing(true);
-    try {
-      // Request a large limit so the admin sees the full knowledge base.
-      // The API returns a paginated envelope: { data, pagination, filters }.
-      const [res1, res2] = await Promise.all([
-        fetch('/api/subjects?limit=100&sortBy=createdAt&sortOrder=desc'),
-        fetch('/api/subjects/stats'),
-      ]);
-      const data1 = await res1.json();
-      const data2 = await res2.json();
-      // FIX: API returns { data: [...] }, legacy expected { subjects: [...] }.
-      // Support both shapes so the list is never empty again.
-      const list = data1.subjects || data1.data || data1.items || [];
-      setSubjects(Array.isArray(list) ? list : []);
-      setStats(data2 || null);
-    } catch (e) {
-      if (!silent) toast.error('Erreur lors du chargement de la base de connaissances');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+  async function load() {
+    setLoading(true);
+    const [res1, res2] = await Promise.all([
+      fetch('/api/subjects'),
+      fetch('/api/subjects/stats'),
+    ]);
+    const data1 = await res1.json();
+    const data2 = await res2.json();
+    setSubjects(data1.subjects || []);
+    setStats(data2);
+    setLoading(false);
+  }
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, []);
 
   function openCreate() {
     setEditing(null);
@@ -92,41 +79,31 @@ export default function SubjectsPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (form.title.trim().length < 5) {
-      toast.error('Le titre doit comporter au moins 5 caractères');
-      return;
-    }
     setSubmitting(true);
     try {
       const url = editing ? `/api/subjects/${editing.id}` : '/api/subjects';
       const method = editing ? 'PUT' : 'POST';
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
       const data = await res.json();
-      if (!res.ok) { toast.error(data.error || 'Erreur lors de l\'enregistrement'); return; }
-      toast.success(editing ? 'Sujet modifié avec succès' : 'Sujet ajouté à la base de connaissances');
+      if (!res.ok) { toast.error(data.error); return; }
+      toast.success(editing ? 'Sujet modifié' : 'Sujet ajouté à la base');
       setDialogOpen(false);
-      load(true);
-    } catch {
-      toast.error('Erreur réseau lors de l\'enregistrement');
+      load();
     } finally { setSubmitting(false); }
   }
 
   async function handleDelete(s: Subject) {
-    if (!confirm(`Supprimer définitivement « ${s.title} » de la base de connaissances ?`)) return;
-    try {
-      const res = await fetch(`/api/subjects/${s.id}`, { method: 'DELETE' });
-      if (!res.ok) { const d = await res.json(); toast.error(d.error || 'Erreur'); return; }
-      toast.success('Sujet supprimé de la base');
-      load(true);
-    } catch {
-      toast.error('Erreur réseau');
-    }
+    if (!confirm(`Supprimer "${s.title}" ?`)) return;
+    await fetch(`/api/subjects/${s.id}`, { method: 'DELETE' });
+    toast.success('Sujet supprimé');
+    load();
   }
 
   async function handleImport() {
     if (!importText.trim()) { toast.error('Collez des données à importer'); return; }
     setImporting(true);
     try {
+      // Parser CSV simple (une ligne = un titre, ou CSV avec virgules)
       const lines = importText.trim().split('\n').filter(l => l.trim());
       const subjectsToImport = lines.map(line => {
         const parts = line.split(',').map(p => p.trim());
@@ -136,48 +113,18 @@ export default function SubjectsPage() {
           keywords: parts[2] || '',
           workType: parts[3] || 'AUTRE',
         };
-      }).filter(s => s.title.length >= 5);
-
-      if (subjectsToImport.length === 0) {
-        toast.error('Aucun sujet valide (titre min. 5 caractères)');
-        return;
-      }
-
+      });
       const res = await fetch('/api/subjects/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subjects: subjectsToImport }),
       });
       const data = await res.json();
-      if (!res.ok) { toast.error(data.error || 'Erreur d\'import'); return; }
-      toast.success(`${data.imported || subjectsToImport.length} sujet(s) importé(s) avec succès`);
+      if (!res.ok) { toast.error(data.error); return; }
+      toast.success(`${data.imported} sujet(s) importé(s)`);
       setImportText('');
-      load(true);
-    } catch {
-      toast.error('Erreur réseau lors de l\'import');
+      load();
     } finally { setImporting(false); }
-  }
-
-  function handleExport() {
-    const headers = ['Titre', 'Domaine', 'Mots-clés', 'Type', 'Niveau', 'Statut', 'Créé le'];
-    const rows = filtered.map(s => [
-      `"${(s.title || '').replace(/"/g, '""')}"`,
-      `"${(s.domain || '').replace(/"/g, '""')}"`,
-      `"${(s.keywords || '').replace(/"/g, '""')}"`,
-      s.workType || 'AUTRE',
-      s.level || '',
-      s.status || '',
-      s.createdAt || '',
-    ].join(','));
-    const csv = [headers.join(','), ...rows].join('\n');
-    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `base-connaissances-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success(`${filtered.length} sujet(s) exporté(s)`);
   }
 
   const filtered = subjects.filter(s =>
@@ -186,9 +133,6 @@ export default function SubjectsPage() {
     (s.keywords || '').toLowerCase().includes(search.toLowerCase())
   );
 
-  // Use stats.totalSubjects when available (authoritative DB count), else fall back to loaded length.
-  const totalCount = stats?.totalSubjects ?? subjects.length;
-
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between flex-wrap gap-4">
@@ -196,19 +140,11 @@ export default function SubjectsPage() {
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
             <Database className="h-6 w-6 text-blue-600" /> Base de connaissances
           </h1>
-          <p className="text-sm text-slate-500 mt-1">
-            Gestion des sujets académiques pour le moteur IA — ajoutez, modifiez et importez sans limite
-          </p>
+          <p className="text-sm text-slate-500 mt-1">Gestion des sujets académiques pour le moteur IA</p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" onClick={() => load(true)} disabled={refreshing} title="Actualiser la liste">
-            {refreshing ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-1.5" />}
-            Actualiser
-          </Button>
-          <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700">
-            <Plus className="h-4 w-4 mr-1.5" /> Ajouter un sujet
-          </Button>
-        </div>
+        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700">
+          <Plus className="h-4 w-4 mr-1.5" /> Ajouter un sujet
+        </Button>
       </div>
 
       {/* Stats */}
@@ -253,24 +189,17 @@ export default function SubjectsPage() {
         <TabsContent value="list">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <CardTitle className="text-base">
-                  {search ? `${filtered.length} résultat(s)` : `${totalCount} sujet(s) en base`}
-                </CardTitle>
-                <div className="flex items-center gap-2">
-                  <div className="relative w-64">
-                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
-                    <Input placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 h-9" />
-                  </div>
-                  <Button variant="outline" size="icon" onClick={handleExport} title="Exporter en CSV" disabled={filtered.length === 0}>
-                    <FileDown className="h-4 w-4" />
-                  </Button>
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle className="text-base">{subjects.length} sujet(s) en base</CardTitle>
+                <div className="relative w-64">
+                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-slate-400" />
+                  <Input placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 h-9" />
                 </div>
               </div>
             </CardHeader>
             <CardContent>
               {loading ? <div className="text-center py-8"><Loader2 className="h-6 w-6 animate-spin mx-auto text-slate-400" /></div> :
-               filtered.length === 0 ? <div className="text-center py-8"><Database className="h-10 w-10 text-slate-300 mx-auto mb-3" /><p className="text-sm text-slate-500">{search ? 'Aucun résultat pour cette recherche.' : 'Aucun sujet. Ajoutez-en un ou importez-en en masse.'}</p></div> :
+               filtered.length === 0 ? <div className="text-center py-8"><Database className="h-10 w-10 text-slate-300 mx-auto mb-3" /><p className="text-sm text-slate-500">Aucun sujet. Ajoutez-en ou importez-en en masse.</p></div> :
                <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
                  <Table>
                    <TableHeader><TableRow>
@@ -286,8 +215,8 @@ export default function SubjectsPage() {
                          <TableCell className="text-xs text-slate-500 max-w-xs truncate">{s.keywords || '—'}</TableCell>
                          <TableCell>
                            <div className="flex justify-end gap-1">
-                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(s)} title="Modifier"><Pencil className="h-4 w-4" /></Button>
-                             <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-600" onClick={() => handleDelete(s)} title="Supprimer"><Trash2 className="h-4 w-4" /></Button>
+                             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(s)}><Pencil className="h-4 w-4" /></Button>
+                             <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-600" onClick={() => handleDelete(s)}><Trash2 className="h-4 w-4" /></Button>
                            </div>
                          </TableCell>
                        </TableRow>
@@ -367,7 +296,7 @@ export default function SubjectsPage() {
             <DialogDescription>Enrichissez la base de connaissances du moteur IA</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2"><Label>Titre <span className="text-rose-500">*</span></Label><Input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} required placeholder="Min. 5 caractères" /></div>
+            <div className="space-y-2"><Label>Titre <span className="text-rose-500">*</span></Label><Input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} required /></div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2"><Label>Domaine</Label><Input value={form.domain} onChange={e => setForm({ ...form, domain: e.target.value })} placeholder="Informatique" /></div>
               <div className="space-y-2"><Label>Niveau</Label><Input value={form.level} onChange={e => setForm({ ...form, level: e.target.value })} placeholder="L3, DEA..." /></div>

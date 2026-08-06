@@ -67,7 +67,6 @@ const NAV_SECTIONS = [
     items: [
       { href: '/dashboard/audit', labelKey: 'nav.audit', icon: ScrollText, roles: ['SUPER_ADMIN'] },
       { href: '/dashboard/admin/logs', labelKey: 'nav.adminLogs', icon: FileSearch, roles: ['SUPER_ADMIN'] },
-      { href: '/dashboard/settings', labelKey: 'nav.settings', icon: Settings, roles: ['SUPER_ADMIN'] },
     ],
   },
   {
