@@ -1,6 +1,91 @@
-// Security & i18n Middleware for PlagiatIA - Edge-compatible version
+/**
+ * ============================================================================
+ * PlagiatIA — Security & i18n Middleware (Edge-compatible)
+ * ============================================================================
+ * Task ID: P3-A — CSP hardening
+ *
+ * CONTENT-SECURITY-POLICY (CSP) — Why 'unsafe-inline' / 'unsafe-eval' are kept
+ * ------------------------------------------------------------------------
+ * Next.js 16.1.3 (App Router, standalone output) injects inline runtime
+ * scripts (React Server Components payload, hydration data, React Refresh
+ * bootstrap) and inline <style> tags (Tailwind 4 layer injection + shadcn/ui
+ * Radix primitives positioning styles). Removing 'unsafe-inline' from
+ * script-src or style-src BREAKS the application at first paint.
+ *
+ *   - script-src 'unsafe-inline'
+ *       Required for Next.js inline <script> tags that carry the RSC payload
+ *       and component hydration data. Without it, the page renders blank.
+ *
+ *   - script-src 'unsafe-eval'
+ *       Required by Next.js dev-mode HMR runtime AND by several production
+ *       dependency code-paths that call `new Function()` (template compilers,
+ *       source-map handlers). In a future hardening pass we can replace this
+ *       with per-request nonces (via NextResponse.headers + a nonce factory),
+ *       but doing so requires patching every <Script> / inline-style emit site
+ *       — out of scope for P3-A. Kept for safety; production-grade defense
+ *       comes from the rest of the policy (frame-ancestors, connect-src,
+ *       object-src, etc.).
+ *
+ *   - style-src 'unsafe-inline'
+ *       Required by Tailwind 4 + shadcn/ui (Radix injects inline styles for
+ *       popover/tooltip/dialog positioning) and by Next.js' own <style>
+ *       injection for optimized CSS. Cannot be removed without breaking the
+ *       UI.
+ *
+ * CSP POLICY SUMMARY
+ * ------------------------------------------------------------------------
+ *   default-src 'self'                            baseline: only same-origin
+ *   script-src 'self' 'unsafe-inline' 'unsafe-eval'
+ *   style-src 'self' 'unsafe-inline'
+ *   img-src 'self' data: blob: https:             allow data-URI + blob + any HTTPS image (CDN-friendly)
+ *   font-src 'self' data:                         self-hosted + base64 fonts
+ *   connect-src 'self' https://api.z.ai https://plagiat.hpph.net
+ *                                                  AJAX/fetch restricted to self + Z.ai LLM API + prod domain
+ *   frame-ancestors 'none'                        clickjacking: no framing (stronger than X-Frame-Options: DENY)
+ *   base-uri 'self'                               no <base> hijack
+ *   form-action 'self'                            forms can only submit to self
+ *   object-src 'none'                             no Flash/Java/plugins
+ *   manifest-src 'self'                           PWA manifest served from same origin
+ *   worker-src 'self'                             service worker / web worker same-origin only
+ *   upgrade-insecure-requests                     force HTTPS on all subresources
+ *
+ * ADDITIONAL HEADERS (beyond CSP) — see applySecurityHeaders()
+ * ------------------------------------------------------------------------
+ *   X-Frame-Options: DENY                         legacy clickjacking defense (kept for old browsers; CSP frame-ancestors is stronger)
+ *   X-Content-Type-Options: nosniff               MIME-type sniffing protection
+ *   Referrer-Policy: strict-origin-when-cross-origin
+ *   X-XSS-Protection: 1; mode=block               legacy XSS auditor (defense in depth)
+ *   Permissions-Policy: camera=(), microphone=(), geolocation=()
+ *   X-Permitted-Cross-Domain-Policies: none       blocks Adobe Flash/PDF crossdomain.xml (defense in depth)
+ *   Cross-Origin-Opener-Policy: same-origin       isolates browsing context (modern Spectre defense)
+ *   Cross-Origin-Resource-Policy: same-origin     restricts who can load resources cross-origin
+ *
+ * This is P3-A work. Output: /home/z/my-project/p3_fixes/middleware.ts
+ * ============================================================================
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
 import { locales, defaultLocale, cookieName, isValidLocale } from '@/lib/i18n/config';
+
+// ============================================================================
+// Content-Security-Policy header value (single string, semicolon-separated).
+// Defined at module scope so it is allocated once per Edge runtime instance
+// rather than per-request.
+// ============================================================================
+const CSP_HEADER =
+  "default-src 'self'; " +
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+  "style-src 'self' 'unsafe-inline'; " +
+  "img-src 'self' data: blob: https:; " +
+  "font-src 'self' data:; " +
+  "connect-src 'self' https://api.z.ai https://plagiat.hpph.net; " +
+  "frame-ancestors 'none'; " +
+  "base-uri 'self'; " +
+  "form-action 'self'; " +
+  "object-src 'none'; " +
+  "manifest-src 'self'; " +
+  "worker-src 'self'; " +
+  "upgrade-insecure-requests;";
 
 // Simple in-memory rate limiting (Edge-compatible)
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
@@ -91,11 +176,50 @@ function detectLocale(request: NextRequest): string {
 }
 
 /**
+ * Apply ALL security headers (CSP + legacy + modern) to a NextResponse.
+ *
+ * Called for every response that leaves the middleware — including the
+ * ignoredPaths branch (static + PWA + health), the main i18n flow, and the
+ * rate-limit 429 responses — so that CSP applies to ALL responses, not just
+ * HTML pages.
+ *
+ * @param response - The NextResponse to attach headers to.
+ * @returns The same NextResponse (mutated), for chaining / direct return.
+ */
+function applySecurityHeaders(response: NextResponse): NextResponse {
+  // === Content-Security-Policy ===
+  // See top-of-file comment block for the rationale behind 'unsafe-inline'
+  // and 'unsafe-eval'. Tightening these requires a per-request nonce plumbing
+  // pass (out of scope for P3-A).
+  response.headers.set('Content-Security-Policy', CSP_HEADER);
+
+  // === Legacy security headers (kept for older browser compatibility) ===
+  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  response.headers.set('X-XSS-Protection', '1; mode=block');
+  response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+
+  // === P3-A additions: modern isolation primitives + defense in depth ===
+  // Blocks Adobe Flash / PDF crossdomain.xml policy files (legacy but still
+  // honored by some embedded viewers).
+  response.headers.set('X-Permitted-Cross-Domain-Policies', 'none');
+  // Isolates the browsing context group — mitigates Spectre-style attacks
+  // where a malicious window could observe cross-origin document state.
+  response.headers.set('Cross-Origin-Opener-Policy', 'same-origin');
+  // Restricts which origins may load resources served from this origin
+  // (defends against cross-origin resource inclusion).
+  response.headers.set('Cross-Origin-Resource-Policy', 'same-origin');
+
+  return response;
+}
+
+/**
  * Middleware principal - Combine sécurité et i18n
  */
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  
+
   // Ignorer les routes statiques et API internes
   const ignoredPaths = [
     '/_next/',
@@ -105,9 +229,13 @@ export async function middleware(request: NextRequest) {
     '/manifest.json',
     '/sw.js',
   ];
-  
+
   if (ignoredPaths.some(path => pathname.startsWith(path))) {
-    return NextResponse.next();
+    // Even on ignored paths (static / PWA / health), apply security headers
+    // — CSP must cover ALL responses per P3-A requirement.
+    const staticResponse = NextResponse.next();
+    applySecurityHeaders(staticResponse);
+    return staticResponse;
   }
 
   // === Détection i18n ===
@@ -128,12 +256,8 @@ export async function middleware(request: NextRequest) {
   // Ajouter le header de langue pour les composants serveur
   response.headers.set('x-locale', detectedLocale);
 
-  // === Security Headers ===
-  response.headers.set('X-Frame-Options', 'DENY');
-  response.headers.set('X-Content-Type-Options', 'nosniff');
-  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
-  response.headers.set('X-XSS-Protection', '1; mode=block');
-  response.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  // === Security Headers (CSP + all hardening) ===
+  applySecurityHeaders(response);
 
   // === Rate Limiting pour API routes ===
   if (pathname.startsWith('/api/')) {
@@ -144,19 +268,23 @@ export async function middleware(request: NextRequest) {
     // Auth routes ont des limites modérées (60 requêtes / min)
     if (pathname.startsWith('/api/auth/')) {
       if (!checkRateLimit(`auth:${ip}`, 60, 60000)) {
-        return NextResponse.json(
+        const rateLimitResponse = NextResponse.json(
           { error: 'Trop de tentatives. Réessayez dans 1 minute.' },
           { status: 429 }
         );
+        applySecurityHeaders(rateLimitResponse);
+        return rateLimitResponse;
       }
     }
 
     // Rate limiting général API (100 req/min)
     if (!checkRateLimit(`api:${ip}`, 100, 60000)) {
-      return NextResponse.json(
+      const rateLimitResponse = NextResponse.json(
         { error: 'Trop de requêtes. Veuillez ralentir.' },
         { status: 429 }
       );
+      applySecurityHeaders(rateLimitResponse);
+      return rateLimitResponse;
     }
   }
 

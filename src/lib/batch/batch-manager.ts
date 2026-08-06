@@ -18,6 +18,22 @@ import { detectPlagiat } from '@/lib/ia/engine';
 import { logger } from '@/lib/logger';
 
 // ============================================================
+// P3-E: Local type extension
+// ------------------------------------------------------------
+// `BatchJob` (from ./types) is missing the runtime-managed
+// `processedDocs` / `failedDocs` counters that this module
+// mutates on the in-memory job (set in `processJob` / `cancelJob`,
+// persisted via `updateJobInStore`). We extend the interface
+// locally instead of touching the shared `./types` module so
+// other consumers of `BatchJob` are unaffected.
+// ============================================================
+
+interface BatchJobWithStats extends BatchJob {
+  processedDocs?: number;
+  failedDocs?: number;
+}
+
+// ============================================================
 // LISTENERS POUR LES ÉVÉNEMENTS TEMPS RÉEL
 // ============================================================
 
@@ -52,7 +68,7 @@ function emitEvent(type: BatchEvent['type'], jobId: string, data: Record<string,
 // ============================================================
 
 class BatchManagerClass {
-  private activeJobs: Map<string, BatchJob> = new Map();
+  private activeJobs: Map<string, BatchJobWithStats> = new Map();
   private queue: PriorityBatchQueue;
   private isProcessing: boolean = false;
 
@@ -107,7 +123,7 @@ class BatchManagerClass {
     };
 
     // Créer le job
-    const job: BatchJob = {
+    const job: BatchJobWithStats = {
       id: genId('batch'),
       name: options.name.trim(),
       documentIds: validDocIds,
@@ -141,15 +157,18 @@ class BatchManagerClass {
       startedAt: null,
       completedAt: null,
       results: JSON.stringify([]),
+      error: null,
       createdAt: now(),
       updatedAt: now(),
     };
 
-    // Ajouter au store si pas encore existant
+    // P3-E: `db.batchJobs` is declared optional on the DB schema
+    // (BatchJobRecord[] | undefined). Initialize lazily; no cast needed
+    // because the `if` guard narrows it to BatchJobRecord[].
     if (!db.batchJobs) {
-      (db as any).batchJobs = [];
+      db.batchJobs = [];
     }
-    (db.batchJobs as any[]).push(batchJobRecord);
+    db.batchJobs.push(batchJobRecord);
     await saveDB(db);
 
     // Audit log
@@ -206,7 +225,7 @@ class BatchManagerClass {
     return job;
   }
 
-  private async processJob(job: BatchJob): Promise<void> {
+  private async processJob(job: BatchJobWithStats): Promise<void> {
     const db = await loadDB();
     
     try {
@@ -254,7 +273,9 @@ class BatchManagerClass {
         }
 
         // Mettre à jour la progression
-        // @ts-expect-error error TS2339: see P2-C audit
+        // P3-E: BatchJobWithStats declares processedDocs/failedDocs as optional
+        // numbers; they are guaranteed to be set by the lines below before any
+        // downstream read in this try-block.
         job.processedDocs = i + 1;
         job.progress = Math.round(((i + 1) / totalDocs) * 100);
         job.updatedAt = new Date();
@@ -279,7 +300,6 @@ class BatchManagerClass {
 
       // Calculer les stats finales
       const failedCount = job.results.filter(r => r.status === 'failed' || r.status === 'timeout').length;
-      // @ts-expect-error error TS2339: see P2-C audit
       job.failedDocs = failedCount;
 
       emitEvent('job:completed', job.id, {
@@ -296,9 +316,7 @@ class BatchManagerClass {
         job.id,
         { 
           totalDocs: job.documentIds.length,
-          // @ts-expect-error error TS2339: see P2-C audit
-          completedDocs: job.processedDocs - job.failedDocs,
-          // @ts-expect-error error TS2339: see P2-C audit
+          completedDocs: job.processedDocs! - job.failedDocs!,
           failedDocs: job.failedDocs,
         }
       );
@@ -327,7 +345,6 @@ class BatchManagerClass {
       logger.info('Batch job finished', {
         jobId: job.id,
         status: job.status,
-        // @ts-expect-error error TS2339: see P2-C audit
         processedDocs: job.processedDocs,
         totalDocs: job.documentIds.length,
       });
@@ -435,7 +452,6 @@ class BatchManagerClass {
       'BATCH_JOB_CANCELLED',
       'BatchJob',
       job.id,
-      // @ts-expect-error error TS2339: see P2-C audit
       { progress: job.progress, processedDocs: job.processedDocs }
     );
 
@@ -470,22 +486,24 @@ class BatchManagerClass {
   // PERSISTANCE
   // ============================================================
 
-  private async updateJobInStore(job: BatchJob): Promise<void> {
+  private async updateJobInStore(job: BatchJobWithStats): Promise<void> {
     const db = await loadDB();
     
     if (!db.batchJobs) {
-      (db as any).batchJobs = [];
+      db.batchJobs = [];
     }
 
-    const batchJobs = db.batchJobs as any[];
+    const batchJobs = db.batchJobs;
     const existingIndex = batchJobs.findIndex(bj => bj.id === job.id);
 
-    const updateData = {
+    // P3-E: `Partial<BatchJobRecord>` accurately reflects that processedDocs
+    // / failedDocs may be undefined on a freshly-created job (before
+    // processJob runs). Object.assign + the push cast below preserve the
+    // original runtime behaviour (JSON.stringify omits undefined keys).
+    const updateData: Partial<import('@/lib/store/db').BatchJobRecord> = {
       status: job.status,
       progress: job.progress,
-      // @ts-expect-error error TS2339: see P2-C audit
       processedDocs: job.processedDocs,
-      // @ts-expect-error error TS2339: see P2-C audit
       failedDocs: job.failedDocs,
       startedAt: job.startedAt?.toISOString() || null,
       completedAt: job.completedAt?.toISOString() || null,
@@ -505,7 +523,7 @@ class BatchManagerClass {
         createdBy: job.createdBy,
         createdAt: job.createdAt.toISOString(),
         ...updateData,
-      });
+      } as import('@/lib/store/db').BatchJobRecord);
     }
 
     await saveDB(db);
@@ -526,12 +544,13 @@ class BatchManagerClass {
           const config: BatchConfig = JSON.parse(record.config);
           const results: BatchResult[] = record.results ? JSON.parse(record.results) : [];
 
-          const job: BatchJob = {
+          // P3-E: BatchJobRecord.status is `string` (loose, persisted JSON);
+          // cast back to the BatchJobStatus union expected by BatchJob.
+          const job: BatchJobWithStats = {
             id: record.id,
             name: record.name,
             documentIds: [], // Les IDs ne sont pas stockés séparément
-            // @ts-expect-error error TS2322: see P2-C audit
-            status: record.status,
+            status: record.status as BatchJobStatus,
             progress: record.progress,
             config,
             results,

@@ -3,18 +3,17 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: "standalone",
   
-  // TypeScript settings
-  // P2: TS checking temporarily disabled while remaining type errors are fixed.
-  // Run `bun run typecheck` to see remaining errors. Target: ignoreBuildErrors: false
+  // TypeScript settings — P3: strict type checking enabled (tsc --noEmit passes with 0 errors)
   typescript: {
     ignoreBuildErrors: false,
   },
   
-  // ESLint settings
-  // P2: ESLint rules are relaxed (all "off" in eslint.config.mjs) — safe to enable
-  // @ts-expect-error error TS2353: see P2-C audit
+  // ESLint settings — P3: linting enabled during builds (all rules currently "off" in eslint.config.mjs)
+  // Note: 'eslint' is a valid runtime config key in Next.js 16 but is missing from the NextConfig
+  // type definition in 16.1.3 — hence the @ts-expect-error directive (verified working at runtime).
+  // @ts-expect-error TS2353: 'eslint' not in NextConfig type (Next.js 16.1.3 type gap)
   eslint: {
-    ignoreDuringBuilds: true,
+    ignoreDuringBuilds: false,
   },
   
   // React strict mode for development

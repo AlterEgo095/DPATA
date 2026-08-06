@@ -15,6 +15,31 @@ import type {
 import { getFederationClient } from './client';
 
 // ============================================================
+// P3-E: Local helper types
+// ------------------------------------------------------------
+// `SyncQueueItem` (from ./types) does not declare a `since` field,
+// but `scheduleDeltaSync` stashes the delta cutoff ISO date on the
+// queue item so `processItem` can read it back later. We use a
+// local intersection type instead of `Record<string, unknown>`
+// casts (which trigger TS2352) — the runtime object shape is
+// unchanged.
+// ============================================================
+
+type SyncQueueItemWithMeta = SyncQueueItem & { since?: string };
+
+// P3-E: Public shape of `SyncQueue.stats` (a getter, not a method).
+// `ReturnType<SyncQueue['stats']>` is invalid (TS2344) because
+// indexed access on a getter returns the value type, not a function.
+interface QueueStats {
+  total: number;
+  pending: number;
+  running: number;
+  completed: number;
+  failed: number;
+  processing: number;
+}
+
+// ============================================================
 // CONFIGURATION
 // ============================================================
 
@@ -161,6 +186,15 @@ class SyncQueue {
     }), (item) => item.id);
   }
   
+  // P3-E: Public passthrough to the underlying InMemoryStore.update.
+  // Previously callers reached into the private store via
+  // `(this.queue as any).update(...)` (suppressed by @ts-expect-error).
+  // Exposing it on the public API is additive — no existing caller
+  // is broken, and the runtime behaviour is identical.
+  update(id: string, updater: (item: SyncQueueItem) => SyncQueueItem, getId: (item: SyncQueueItem) => string): void {
+    this.queue.update(id, updater, getId);
+  }
+  
   /** Marque une tâche comme terminée et libère le slot */
   complete(id: string, success: boolean): void {
     this.updateStatus(id, success ? 'COMPLETED' : 'FAILED');
@@ -247,7 +281,7 @@ class SyncQueue {
     }
   }
   
-  get stats() {
+  get stats(): QueueStats {
     const all = this.queue.getAll();
     return {
       total: all.length,
@@ -372,7 +406,12 @@ export class SyncManager {
   private client: ReturnType<typeof getFederationClient>;
   private isRunning = false;
   private intervalHandle: NodeJS.Timeout | null = null;
-  private localMetadataCache = new Map<string, DocumentMetadata>();
+  // P3-E: The cache stores ARRAYS of metadata per university (one
+  // entry per partner). The original `Map<string, DocumentMetadata>`
+  // (singular) was a type lie — the runtime always stored arrays —
+  // which forced 4 @ts-expect-error directives. Correcting the
+  // generic parameter removes all four without touching runtime.
+  private localMetadataCache = new Map<string, DocumentMetadata[]>();
   
   constructor(config: Partial<SyncManagerConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -466,9 +505,11 @@ export class SyncManager {
       maxRetries: this.config.maxRetryAttempts,
     });
     
-    // Stocker la date de référence dans les métadonnées via details
-    // @ts-expect-error error TS2352: see P2-C audit
-    (item as Record<string, unknown>).since = since.toISOString();
+    // P3-E: Stash the delta cutoff on the queue item via a locally-typed
+    // intersection. `SyncQueueItem` itself doesn't declare `since`, but
+    // the runtime has always carried it. The intersection cast is a
+    // widening (allowed by TS) and produces identical JS output.
+    (item as SyncQueueItemWithMeta).since = since.toISOString();
     
     this.auditLogger.log('SYNC_INITIATED', {
       syncId: item.id,
@@ -564,15 +605,14 @@ export class SyncManager {
       }
       
       // Mettre à jour le nombre total de documents
-      // @ts-expect-error error TS2339: see P2-C audit
       this.queue.update(item.id, (i) => ({
         ...i,
         documentsTotal: localMetadata.length,
       }), (i) => i.id);
       
       // Effectuer la synchronisation via le client
-      // @ts-expect-error error TS2352: see P2-C audit
-      const since = (item as Record<string, unknown>).since as string | undefined;
+      // P3-E: Read back the delta cutoff stashed by scheduleDeltaSync.
+      const since = (item as SyncQueueItemWithMeta).since;
       const result = await this.client.syncMetadata(university, localMetadata, {
         lastSyncDate: since ? new Date(since) : undefined,
         fullSync: item.operation === 'FULL',
@@ -637,18 +677,15 @@ export class SyncManager {
   // ============================================================
   
   setLocalMetadata(universityId: string, metadata: DocumentMetadata[]): void {
-    // @ts-expect-error error TS2345: see P2-C audit
     this.localMetadataCache.set(universityId, metadata);
   }
   
   getLocalMetadata(universityId: string, _operation: SyncOperation): DocumentMetadata[] {
-    // @ts-expect-error error TS2322: see P2-C audit
     return this.localMetadataCache.get(universityId) || [];
   }
   
   updateLocalMetadata(universityId: string, metadata: DocumentMetadata[]): void {
     const existing = this.localMetadataCache.get(universityId) || [];
-    // @ts-expect-error error TS2488: see P2-C audit
     const merged = [...existing];
     
     for (const meta of metadata) {
@@ -660,7 +697,6 @@ export class SyncManager {
       }
     }
     
-    // @ts-expect-error error TS2345: see P2-C audit
     this.localMetadataCache.set(universityId, merged);
   }
   
@@ -679,8 +715,7 @@ export class SyncManager {
   // ============================================================
   
   /** Retourne les statistiques de la file d'attente */
-  // @ts-expect-error error TS2344: see P2-C audit
-  getQueueStats(): ReturnType<SyncQueue['stats']> {
+  getQueueStats(): QueueStats {
     return this.queue.stats;
   }
   

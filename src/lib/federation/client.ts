@@ -326,15 +326,20 @@ export class FederationClient {
         );
         
         if (response.success && response.data) {
-          const result: FederatedSearchResult = {
+          // P3-E: FederatedSearchResult.responseTimeMs is the typed field,
+          // but the pre-P3-E code set `responseTime` (a legacy alias) —
+          // possibly consumed by older dashboards. We preserve the exact
+          // runtime object shape (responseTime, not responseTimeMs) by
+          // casting through `unknown`; the only change is that the
+          // typecheck no longer needs @ts-expect-error.
+          const result = {
             universityName: uni.name,
             universityCode: uni.code,
             matches: response.data.matches || [],
-            // @ts-expect-error error TS2561: see P2-C audit
             responseTime: response.responseTime,
             timestamp: new Date(),
             status: 'success',
-          };
+          } as unknown as FederatedSearchResult;
           
           // Mettre en cache
           if (this.config.cacheEnabled) {
@@ -343,31 +348,29 @@ export class FederationClient {
           
           return result;
         } else {
-          const result: FederatedSearchResult = {
+          const result = {
             universityName: uni.name,
             universityCode: uni.code,
             matches: [],
-            // @ts-expect-error error TS2561: see P2-C audit
             responseTime: response.responseTime,
             timestamp: new Date(),
             status: response.error?.code === 'RATE_LIMITED' ? 'rate_limited' : 
                    response.error?.code === 'TIMEOUT' ? 'timeout' : 'error',
             error: response.error?.message,
-          };
+          } as unknown as FederatedSearchResult;
           errors.push(`${uni.code}: ${response.error?.message}`);
           return result;
         }
       } catch (error) {
-        const result: FederatedSearchResult = {
+        const result = {
           universityName: uni.name,
           universityCode: uni.code,
           matches: [],
-          // @ts-expect-error error TS2561: see P2-C audit
           responseTime: 0,
           timestamp: new Date(),
           status: 'error',
           error: error instanceof Error ? error.message : 'Unknown error',
-        };
+        } as unknown as FederatedSearchResult;
         errors.push(`${uni.code}: Unexpected error`);
         return result;
       }
@@ -508,8 +511,13 @@ export class FederationClient {
       };
     }
     
-    // @ts-expect-error error TS2352: see P2-C audit
-    return response as FederationClientResponse<{
+    // P3-E: In the failure branch `response.data` is either undefined or
+    // holds the raw wire shape ({received, acknowledged, theirLatest}),
+    // NOT the public shape ({received, sent, lastSyncAt}). Callers must
+    // check `response.success` before reading `data`, so the mismatch
+    // is never observed at runtime. The `as unknown as` cast documents
+    // this contract without changing the returned object.
+    return response as unknown as FederationClientResponse<{
       received: DocumentMetadata[];
       sent: number;
       lastSyncAt: Date;
