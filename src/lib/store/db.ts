@@ -249,11 +249,11 @@ const DEFAULT_DB: DB = {
   faculties: [],
   departments: [],
   promotions: [],
-      // @ts-expect-error P2-C: minor type issue after cleanup
   users: [
     {
       id: 'u-super-admin',
       email: 'admin@unikin.ac.cd',
+      passwordHash: 'b2sc5G.MfF7lnu3UCZWluLuDs/l7xvdjKiiWkkaaPLN7E3MvZpmW.6',
       // 🔒 SÉCURITÉ: Mot de passe hashé avec bcrypt (cost factor 12) — changé au premier login
       firstName: 'Super',
       lastName: 'Administrateur',
